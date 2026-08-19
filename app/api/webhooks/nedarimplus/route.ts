@@ -36,13 +36,18 @@ export async function POST(request: NextRequest) {
 
   const billId = extractBillIdFromComment(payload.Comments);
   if (!billId) {
-    console.error("[nedarim webhook] no BILL- reference found in Comments", payload);
+    // Expected and routine: this webhook receives every transaction on the Mosad
+    // (donations, membership dues, etc.), not just seat payments. No BILL- reference
+    // means it's unrelated - skip silently, no need to log or store anything about it.
     return NextResponse.json({ ok: true, matched: false });
   }
 
   const signup = await prisma.signup.findUnique({ where: { billId } });
   if (!signup) {
-    console.error(`[nedarim webhook] no signup found for billId ${billId}`);
+    // This one is worth flagging: the comment matched our BILL- pattern but no
+    // signup record exists for it - could mean a signup was deleted, or (rarely)
+    // an unrelated transaction's comment happened to collide with the pattern.
+    console.error(`[nedarim webhook] BILL- reference found but no matching signup: ${billId}`);
     return NextResponse.json({ ok: true, matched: false });
   }
 
