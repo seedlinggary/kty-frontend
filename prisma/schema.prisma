@@ -1,0 +1,92 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+model Holiday {
+  id                    String     @id @default(cuid())
+  slug                  String     @unique
+  nameEn                String
+  nameHe                String
+  descriptionEn         String?
+  descriptionHe         String?
+  memberPriceAgorot     Int
+  nonMemberPriceAgorot  Int
+  isOpen                Boolean    @default(true)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  signups               Signup[]
+}
+
+enum SignupStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model Signup {
+  id           String        @id @default(cuid())
+  billId       String        @unique
+  holiday      Holiday       @relation(fields: [holidayId], references: [id], onDelete: Restrict)
+  holidayId    String
+  fullName     String
+  phone        String
+  email        String?
+  isMember     Boolean
+  menSeats     Int           @default(0)
+  womenSeats   Int           @default(0)
+  totalAgorot  Int
+  status       SignupStatus  @default(PENDING)
+  notes        String?
+  createdBy    String        @default("public")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+
+  @@index([holidayId])
+  @@index([status])
+}
+
+model Transaction {
+  id                    String   @id @default(cuid())
+  signup                Signup   @relation(fields: [signupId], references: [id], onDelete: Cascade)
+  signupId              String
+  nedarimTransactionId  String?
+  confirmation          String?
+  amountAgorot          Int
+  source                String   @default("webhook")
+  rawPayload            Json?
+  receivedAt            DateTime @default(now())
+
+  @@index([signupId])
+}
+
+model SiteSettings {
+  id              Int    @id @default(1)
+  aboutEn         String
+  aboutHe         String
+  contactPhone    String
+  contactEmail    String
+  address         String
+  serviceTimesEn  String?
+  serviceTimesHe  String?
+  heroTaglineEn   String
+  heroTaglineHe   String
+}
