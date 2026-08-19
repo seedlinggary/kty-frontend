@@ -5,6 +5,9 @@ import { Container } from "@/components/ui/container";
 import { SeatSignupForm } from "@/components/site/seat-signup-form";
 import { getHolidayBySlug } from "@/lib/holidays";
 
+// Must always reflect the latest admin edits (price, open/closed, description) immediately.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: {

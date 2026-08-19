@@ -4,6 +4,10 @@ import { LinkButton } from "@/components/ui/button";
 import { getOpenHolidays } from "@/lib/holidays";
 import { getSiteSettings } from "@/lib/settings";
 
+// Must always reflect the latest admin-created holidays and Site Settings edits
+// immediately - never statically cached at build time.
+export const dynamic = "force-dynamic";
+
 export default async function HomePage({
   params,
 }: {

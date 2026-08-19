@@ -6,6 +6,10 @@ import { prisma } from "@/lib/prisma";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   pages: { signIn: "/admin/login" },
+  // Explicit rather than relying on Vercel's auto-detection, which has documented
+  // edge cases where it doesn't kick in reliably. Safe here: we're not using this
+  // to trust a Host header for anything security-sensitive beyond the callback URL.
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {

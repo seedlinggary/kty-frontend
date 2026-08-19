@@ -3,6 +3,9 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Container } from "@/components/ui/container";
 import { getSiteSettings } from "@/lib/settings";
 
+// Must always reflect the latest Site Settings edits immediately - never statically cached.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: {

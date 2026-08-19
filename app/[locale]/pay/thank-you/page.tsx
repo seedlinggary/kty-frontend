@@ -3,6 +3,9 @@ import { Container } from "@/components/ui/container";
 import { LinkButton } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
 
+// Must always check the live payment status, never a cached/stale one.
+export const dynamic = "force-dynamic";
+
 export default async function ThankYouPage({
   params,
   searchParams,

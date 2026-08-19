@@ -5,6 +5,9 @@ import { LinkButton } from "@/components/ui/button";
 import { getOpenHolidays } from "@/lib/holidays";
 import { agorotToShekels } from "@/lib/money";
 
+// Must always reflect the latest admin-created holidays - never statically cached.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: {
