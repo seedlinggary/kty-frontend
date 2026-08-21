@@ -32,7 +32,7 @@ export function HolidayForm({
     <form action={formAction} className="max-w-2xl space-y-6 rounded-xl border border-line bg-white p-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Name (English)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Name (English)</label>
           <input
             name="nameEn"
             required
@@ -44,7 +44,7 @@ export function HolidayForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Name (Hebrew)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Name (Hebrew)</label>
           <input
             name="nameHe"
             dir="rtl"
@@ -56,7 +56,7 @@ export function HolidayForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-navy">URL Slug</label>
+        <label className="mb-1 block text-sm font-medium text-ink">URL Slug</label>
         <input
           name="slug"
           required
@@ -72,7 +72,7 @@ export function HolidayForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Description (English)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Description (English)</label>
           <textarea
             name="descriptionEn"
             rows={3}
@@ -81,7 +81,7 @@ export function HolidayForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Description (Hebrew)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Description (Hebrew)</label>
           <textarea
             name="descriptionHe"
             dir="rtl"
@@ -94,7 +94,7 @@ export function HolidayForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Member Price (₪ / seat)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Member Price (₪ / seat)</label>
           <input
             name="memberPrice"
             type="number"
@@ -106,7 +106,7 @@ export function HolidayForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Non-Member Price (₪ / seat)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Non-Member Price (₪ / seat)</label>
           <input
             name="nonMemberPrice"
             type="number"
@@ -119,7 +119,7 @@ export function HolidayForm({
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm font-medium text-navy">
+      <label className="flex items-center gap-2 text-sm font-medium text-ink">
         <input
           type="checkbox"
           name="isOpen"
@@ -134,7 +134,7 @@ export function HolidayForm({
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-navy px-5 py-2.5 text-sm font-semibold text-cream hover:bg-navy-light disabled:opacity-50"
+        className="rounded-md bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50"
       >
         {pending ? "Saving..." : submitLabel}
       </button>

@@ -13,17 +13,17 @@ export default async function AdminDashboardPage() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-navy">Dashboard</h1>
+        <h1 className="font-serif text-2xl font-semibold text-ink">Dashboard</h1>
         <Link
           href="/admin/holidays/new"
-          className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-cream hover:bg-navy-light"
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
         >
           + New Holiday
         </Link>
       </div>
 
       {!nedarimReady && (
-        <div className="mt-4 rounded-md border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-navy">
+        <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-ink">
           NedarimPlus isn&apos;t configured yet (<code>NEDARIM_MOSAD</code> /{" "}
           <code>NEDARIM_APIVALID</code>). Signups still work, but payment links won&apos;t be
           generated until those are set in your environment variables.
@@ -33,7 +33,7 @@ export default async function AdminDashboardPage() {
       {holidays.length === 0 ? (
         <p className="mt-10 text-ink/60">
           No holidays yet.{" "}
-          <Link href="/admin/holidays/new" className="text-navy underline">
+          <Link href="/admin/holidays/new" className="text-ink underline">
             Create your first one
           </Link>
           .
@@ -44,10 +44,10 @@ export default async function AdminDashboardPage() {
             <Link
               key={h.id}
               href={`/admin/holidays/${h.id}`}
-              className="block rounded-xl border border-line bg-white p-6 hover:border-gold"
+              className="block rounded-xl border border-line bg-white p-6 hover:border-accent"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-serif text-xl font-semibold text-navy">{h.nameEn}</h2>
+                <h2 className="font-serif text-xl font-semibold text-ink">{h.nameEn}</h2>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${
                     h.isOpen ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
@@ -76,7 +76,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase tracking-wide text-ink/50">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-navy">{value}</p>
+      <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
     </div>
   );
 }

@@ -1,8 +1,10 @@
+import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Container } from "@/components/ui/container";
 import { LinkButton } from "@/components/ui/button";
 import { getOpenHolidays } from "@/lib/holidays";
 import { getSiteSettings } from "@/lib/settings";
+import logoIcon from "@/public/logo-icon.png";
 
 // Must always reflect the latest admin-created holidays and Site Settings edits
 // immediately - never statically cached at build time.
@@ -26,7 +28,7 @@ export default async function HomePage({
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "PlaceOfWorship",
-    name: "Kehilat Tiferet Yisrael",
+    name: "Kehillas Tiferes Yisroel",
     address: {
       "@type": "PostalAddress",
       streetAddress: settings.address,
@@ -44,29 +46,30 @@ export default async function HomePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
-      <section className="bg-navy text-cream">
-        <Container className="flex flex-col items-start gap-6 py-20 sm:py-28">
-          <p className="text-sm font-semibold uppercase tracking-widest text-gold-light">
+      <section className="bg-ink text-white">
+        <Container className="flex flex-col items-start gap-6 py-16 sm:py-24">
+          <Image src={logoIcon} alt="" priority className="h-16 w-auto sm:h-20" />
+          <p className="text-sm font-semibold uppercase tracking-widest text-line">
             {t("heroEyebrow")}
           </p>
           <h1 className="max-w-2xl font-serif text-4xl font-bold leading-tight sm:text-5xl">
             {t("heroTitle")}
           </h1>
-          <p className="max-w-xl text-lg text-cream/85">
+          <p className="max-w-xl text-lg text-white/85">
             {isHe ? settings.heroTaglineHe : settings.heroTaglineEn}
           </p>
-          <LinkButton href="/about" variant="primary">
+          <LinkButton href="/about" variant="onDark">
             {t("heroCta")}
           </LinkButton>
         </Container>
       </section>
 
-      <section className="border-b border-line bg-gold/10">
+      <section className="border-b border-line bg-pale">
         <Container className="py-10">
           {openHolidays.length > 0 ? (
             <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="font-serif text-2xl font-semibold text-navy">
+                <h2 className="font-serif text-2xl font-semibold text-ink">
                   {t("openSaleHeading")}
                 </h2>
                 <p className="mt-1 text-ink/70">
@@ -94,7 +97,7 @@ export default async function HomePage({
                   key={h.id}
                   className="flex items-center justify-between rounded-lg border border-line bg-white px-4 py-3"
                 >
-                  <span className="font-medium text-navy">{isHe ? h.nameHe : h.nameEn}</span>
+                  <span className="font-medium text-ink">{isHe ? h.nameHe : h.nameEn}</span>
                   <LinkButton href={`/seats/${h.slug}`} variant="ghost">
                     {tSeats("signUpCta")}
                   </LinkButton>
@@ -105,10 +108,10 @@ export default async function HomePage({
         </section>
       )}
 
-      <section className="py-16">
+      <section className="bg-pale py-16">
         <Container className="grid gap-10 md:grid-cols-2 md:items-center">
           <div>
-            <h2 className="font-serif text-3xl font-semibold text-navy">{t("aboutHeading")}</h2>
+            <h2 className="font-serif text-3xl font-semibold text-ink">{t("aboutHeading")}</h2>
             <p className="mt-4 whitespace-pre-line leading-relaxed text-ink/80">{about}</p>
             <div className="mt-6">
               <LinkButton href="/about" variant="ghost">
@@ -116,8 +119,8 @@ export default async function HomePage({
               </LinkButton>
             </div>
           </div>
-          <div className="rounded-xl border border-line bg-cream-alt p-8">
-            <h3 className="font-serif text-xl font-semibold text-navy">{t("contactHeading")}</h3>
+          <div className="rounded-xl border border-line bg-white p-8 shadow-sm">
+            <h3 className="font-serif text-xl font-semibold text-ink">{t("contactHeading")}</h3>
             <dl className="mt-4 space-y-2 text-ink/80">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">

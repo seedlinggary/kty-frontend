@@ -35,39 +35,54 @@ model Holiday {
   signups               Signup[]
 }
 
-enum SignupStatus {
+enum BillStatus {
   PENDING
   PAID
   CANCELLED
 }
 
-model Signup {
-  id           String        @id @default(cuid())
-  billId       String        @unique
-  holiday      Holiday       @relation(fields: [holidayId], references: [id], onDelete: Restrict)
-  holidayId    String
-  fullName     String
-  phone        String
-  email        String?
-  isMember     Boolean
-  menSeats     Int           @default(0)
-  womenSeats   Int           @default(0)
-  totalAgorot  Int
-  status       SignupStatus  @default(PENDING)
-  notes        String?
-  createdBy    String        @default("public")
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  transactions Transaction[]
+/// One payment: contact info + membership status + amount + NedarimPlus reference.
+/// Can cover seats for more than one holiday at once via its line items (Signup).
+model Bill {
+  id            String        @id @default(cuid())
+  referenceCode String        @unique
+  fullName      String
+  phone         String
+  email         String?
+  isMember      Boolean
+  notes         String?
+  totalAgorot   Int
+  status        BillStatus    @default(PENDING)
+  createdBy     String        @default("public")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lineItems     Signup[]
+  transactions  Transaction[]
 
-  @@index([holidayId])
   @@index([status])
+}
+
+/// One line item within a Bill: seats for a single holiday.
+model Signup {
+  id          String   @id @default(cuid())
+  bill        Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId      String
+  holiday     Holiday  @relation(fields: [holidayId], references: [id], onDelete: Restrict)
+  holidayId   String
+  menSeats    Int      @default(0)
+  womenSeats  Int      @default(0)
+  totalAgorot Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([billId, holidayId])
+  @@index([holidayId])
 }
 
 model Transaction {
   id                    String   @id @default(cuid())
-  signup                Signup   @relation(fields: [signupId], references: [id], onDelete: Cascade)
-  signupId              String
+  bill                  Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId                String
   nedarimTransactionId  String?
   confirmation          String?
   amountAgorot          Int
@@ -75,7 +90,7 @@ model Transaction {
   rawPayload            Json?
   receivedAt            DateTime @default(now())
 
-  @@index([signupId])
+  @@index([billId])
 }
 
 model SiteSettings {

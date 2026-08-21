@@ -29,9 +29,9 @@ async function main() {
     create: {
       id: 1,
       aboutEn:
-        "Kehilat Tiferet Yisrael (KTY) is a small, tight-knit American-Charedi community in Ramat Beit Shemesh Hey, led by Rav Lovy. We're a warm, welcoming kehilla for families looking for a genuine, close-knit davening and learning environment.",
+        "Kehillas Tiferes Yisroel (KTY) is a small, tight-knit Anglo Charedi community in Ramat Beit Shemesh Hey, led by Rav Lovy. We're a warm, welcoming kehilla for families looking for a genuine, close-knit davening and learning environment.",
       aboutHe:
-        "קהילת תפארת ישראל (KTY) היא קהילה חרדית-אמריקאית קטנה ומלוכדת ברמת בית שמש ה', בראשות הרב לובי. קהילה חמה ומקבלת פנים למשפחות המחפשות סביבת תפילה ולימוד אמיתית ומלוכדת.",
+        "קהילת תפארת ישראל (KTY) היא קהילה חרדית-אנגלוסקסית קטנה ומלוכדת ברמת בית שמש ה', בראשות הרב לובי. קהילה חמה ומקבלת פנים למשפחות המחפשות סביבת תפילה ולימוד אמיתית ומלוכדת.",
       contactPhone: "",
       contactEmail: "",
       address: "Across from Yonatan, Ramat Beit Shemesh Hey",

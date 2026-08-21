@@ -12,7 +12,7 @@ export default async function NewSignupPage({ params }: { params: Promise<{ id: 
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-semibold text-navy">
+      <h1 className="font-serif text-2xl font-semibold text-ink">
         Create Bill — {holiday.nameEn}
       </h1>
       <p className="mt-1 text-sm text-ink/60">

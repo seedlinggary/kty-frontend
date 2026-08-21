@@ -14,8 +14,8 @@ export type SiteSettingsData = {
 
 const FALLBACK_SETTINGS: SiteSettingsData = {
   aboutEn:
-    "Kehilat Tiferet Yisrael is a small, tight-knit American-Charedi community in Ramat Beit Shemesh Hey.",
-  aboutHe: "קהילת תפארת ישראל היא קהילה חרדית-אמריקאית קטנה ומלוכדת ברמת בית שמש ה'.",
+    "Kehillas Tiferes Yisroel is a small, tight-knit Anglo Charedi community in Ramat Beit Shemesh Hey.",
+  aboutHe: "קהילת תפארת ישראל היא קהילה חרדית-אנגלוסקסית קטנה ומלוכדת ברמת בית שמש ה'.",
   contactPhone: "",
   contactEmail: "",
   address: "Across from Yonatan, Ramat Beit Shemesh Hey",

@@ -13,11 +13,11 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
   return (
     <form action={formAction} className="max-w-3xl space-y-8">
       <section className="rounded-xl border border-line bg-white p-6">
-        <h2 className="font-serif text-lg font-semibold text-navy">Hero Tagline</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">Hero Tagline</h2>
         <p className="mt-1 text-sm text-ink/50">Shown under the shul name on the homepage.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">English</label>
+            <label className="mb-1 block text-sm font-medium text-ink">English</label>
             <textarea
               name="heroTaglineEn"
               rows={2}
@@ -26,7 +26,7 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">Hebrew</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Hebrew</label>
             <textarea
               name="heroTaglineHe"
               dir="rtl"
@@ -39,11 +39,11 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
       </section>
 
       <section className="rounded-xl border border-line bg-white p-6">
-        <h2 className="font-serif text-lg font-semibold text-navy">About</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">About</h2>
         <p className="mt-1 text-sm text-ink/50">Shown on the Home and About pages.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">English</label>
+            <label className="mb-1 block text-sm font-medium text-ink">English</label>
             <textarea
               name="aboutEn"
               rows={6}
@@ -53,7 +53,7 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">Hebrew</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Hebrew</label>
             <textarea
               name="aboutHe"
               dir="rtl"
@@ -67,10 +67,10 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
       </section>
 
       <section className="rounded-xl border border-line bg-white p-6">
-        <h2 className="font-serif text-lg font-semibold text-navy">Contact & Location</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">Contact & Location</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-navy">Address</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Address</label>
             <input
               name="address"
               required
@@ -79,7 +79,7 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">Phone</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Phone</label>
             <input
               name="contactPhone"
               defaultValue={settings.contactPhone}
@@ -87,7 +87,7 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">Email</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Email</label>
             <input
               name="contactEmail"
               type="email"
@@ -99,13 +99,13 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
       </section>
 
       <section className="rounded-xl border border-line bg-white p-6">
-        <h2 className="font-serif text-lg font-semibold text-navy">Davening Times</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">Davening Times</h2>
         <p className="mt-1 text-sm text-ink/50">
           Optional — leave blank to hide this section on the homepage.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">English</label>
+            <label className="mb-1 block text-sm font-medium text-ink">English</label>
             <textarea
               name="serviceTimesEn"
               rows={4}
@@ -115,7 +115,7 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-navy">Hebrew</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Hebrew</label>
             <textarea
               name="serviceTimesHe"
               dir="rtl"
@@ -133,7 +133,7 @@ export function SettingsForm({ settings }: { settings: SiteSettingsData }) {
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-navy px-6 py-2.5 text-sm font-semibold text-cream hover:bg-navy-light disabled:opacity-50"
+        className="rounded-md bg-ink px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50"
       >
         {pending ? "Saving..." : "Save Settings"}
       </button>

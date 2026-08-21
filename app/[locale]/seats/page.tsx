@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Container } from "@/components/ui/container";
-import { LinkButton } from "@/components/ui/button";
+import { SeatSignupForm } from "@/components/site/seat-signup-form";
 import { getOpenHolidays } from "@/lib/holidays";
-import { agorotToShekels } from "@/lib/money";
 
 // Must always reflect the latest admin-created holidays - never statically cached.
 export const dynamic = "force-dynamic";
@@ -15,50 +14,43 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "seats" });
-  return { title: t("listHeading") };
+  return { title: t("formHeading") };
 }
 
-export default async function SeatsListPage({
+export default async function SeatsPage({
   params,
 }: {
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
+  const isHe = locale === "he";
 
   const t = await getTranslations("seats");
   const holidays = await getOpenHolidays();
-  const isHe = locale === "he";
 
   return (
     <Container className="py-16">
-      <p className="text-sm font-semibold uppercase tracking-widest text-gold">{t("eyebrow")}</p>
-      <h1 className="mt-2 font-serif text-4xl font-bold text-navy">{t("listHeading")}</h1>
+      <p className="text-sm font-semibold uppercase tracking-widest text-accent">{t("eyebrow")}</p>
+      <h1 className="mt-2 font-serif text-4xl font-bold text-ink">{t("formHeading")}</h1>
 
       {holidays.length === 0 ? (
-        <p className="mt-10 text-ink/60">{t("listEmpty")}</p>
+        <p className="mt-10 text-ink/60">{t("noOpenHolidays")}</p>
       ) : (
-        <ul className="mt-10 grid gap-5 sm:grid-cols-2">
-          {holidays.map((h) => (
-            <li key={h.id} className="rounded-xl border border-line bg-white p-6 shadow-sm">
-              <h2 className="font-serif text-xl font-semibold text-navy">
-                {isHe ? h.nameHe : h.nameEn}
-              </h2>
-              {(isHe ? h.descriptionHe : h.descriptionEn) && (
-                <p className="mt-2 text-sm text-ink/70">
-                  {isHe ? h.descriptionHe : h.descriptionEn}
-                </p>
-              )}
-              <div className="mt-4 space-y-1 text-sm text-ink/70">
-                <p>{t("perSeatMember", { price: agorotToShekels(h.memberPriceAgorot) })}</p>
-                <p>{t("perSeatNonMember", { price: agorotToShekels(h.nonMemberPriceAgorot) })}</p>
-              </div>
-              <div className="mt-5">
-                <LinkButton href={`/seats/${h.slug}`}>{t("signUpCta")}</LinkButton>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-10 max-w-2xl">
+          <SeatSignupForm
+            holidays={holidays.map((h) => ({
+              slug: h.slug,
+              nameEn: h.nameEn,
+              nameHe: h.nameHe,
+              descriptionEn: h.descriptionEn,
+              descriptionHe: h.descriptionHe,
+              memberPriceAgorot: h.memberPriceAgorot,
+              nonMemberPriceAgorot: h.nonMemberPriceAgorot,
+            }))}
+            locale={isHe ? "he" : "en"}
+          />
+        </div>
       )}
     </Container>
   );

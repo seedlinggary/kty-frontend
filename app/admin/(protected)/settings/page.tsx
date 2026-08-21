@@ -9,7 +9,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-semibold text-navy">Site Settings</h1>
+      <h1 className="font-serif text-2xl font-semibold text-ink">Site Settings</h1>
       <p className="mt-1 text-sm text-ink/60">
         Edit public site content. Changes go live immediately, no deploy needed.
       </p>

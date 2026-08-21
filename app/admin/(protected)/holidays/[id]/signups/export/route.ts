@@ -12,7 +12,9 @@ const COLUMNS: CsvColumn[] = [
   { key: "menSeats", label: "Men's Seats" },
   { key: "womenSeats", label: "Women's Seats" },
   { key: "totalSeats", label: "Total Seats" },
-  { key: "totalILS", label: "Total (ILS)" },
+  { key: "lineTotalILS", label: "Line Total (ILS)" },
+  { key: "billTotalILS", label: "Bill Total (ILS)" },
+  { key: "otherHolidays", label: "Also Includes" },
   { key: "status", label: "Status" },
   { key: "confirmation", label: "Confirmation #" },
   { key: "notes", label: "Notes" },
@@ -28,7 +30,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     include: {
       signups: {
         orderBy: { createdAt: "asc" },
-        include: { transactions: { orderBy: { receivedAt: "desc" }, take: 1 } },
+        include: {
+          bill: {
+            include: {
+              transactions: { orderBy: { receivedAt: "desc" }, take: 1 },
+              lineItems: { include: { holiday: true } },
+            },
+          },
+        },
       },
     },
   });
@@ -37,22 +46,32 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Holiday not found" }, { status: 404 });
   }
 
-  const rows = holiday.signups.map((s) => ({
-    billId: `BILL-${s.billId}`,
-    fullName: s.fullName,
-    phone: s.phone,
-    email: s.email ?? "",
-    membership: s.isMember ? "Member" : "Non-Member",
-    menSeats: s.menSeats,
-    womenSeats: s.womenSeats,
-    totalSeats: s.menSeats + s.womenSeats,
-    totalILS: agorotToShekels(s.totalAgorot),
-    status: s.status,
-    confirmation: s.transactions[0]?.confirmation ?? "",
-    notes: s.notes ?? "",
-    createdBy: s.createdBy,
-    submittedAt: s.createdAt.toISOString(),
-  }));
+  const rows = holiday.signups.map((s) => {
+    const bill = s.bill;
+    const otherHolidays = bill.lineItems
+      .filter((item) => item.holidayId !== holiday.id)
+      .map((item) => item.holiday.nameEn)
+      .join(", ");
+
+    return {
+      billId: `BILL-${bill.referenceCode}`,
+      fullName: bill.fullName,
+      phone: bill.phone,
+      email: bill.email ?? "",
+      membership: bill.isMember ? "Member" : "Non-Member",
+      menSeats: s.menSeats,
+      womenSeats: s.womenSeats,
+      totalSeats: s.menSeats + s.womenSeats,
+      lineTotalILS: agorotToShekels(s.totalAgorot),
+      billTotalILS: agorotToShekels(bill.totalAgorot),
+      otherHolidays,
+      status: bill.status,
+      confirmation: bill.transactions[0]?.confirmation ?? "",
+      notes: bill.notes ?? "",
+      createdBy: bill.createdBy,
+      submittedAt: s.createdAt.toISOString(),
+    };
+  });
 
   const csv = toCsv(COLUMNS, rows);
   const filename = `signups-${holiday.slug}-${new Date().toISOString().slice(0, 10)}.csv`;

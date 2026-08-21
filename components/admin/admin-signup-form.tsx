@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { createSignup } from "@/lib/actions/signups";
+import { createBill } from "@/lib/actions/signups";
 import { formatAgorotAsILS } from "@/lib/money";
 import { CopyLinkButton } from "@/components/admin/copy-link-button";
 
@@ -43,21 +43,25 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
     }
 
     startTransition(async () => {
-      const result = await createSignup({
-        holidaySlug,
+      const result = await createBill({
         fullName,
         phone,
         email,
         isMember,
-        menSeats,
-        womenSeats,
         notes,
+        lineItems: [{ holidaySlug, menSeats, womenSeats }],
         locale: "en",
         createdBy: "admin",
       });
 
       if (!result.ok) {
-        setError(result.error);
+        setError(
+          result.error === "no_seats"
+            ? "Please select at least one seat."
+            : result.error === "missing_fields"
+              ? "Name and phone are required."
+              : "This holiday is no longer open."
+        );
         return;
       }
 
@@ -71,9 +75,9 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
           Status: Payment Pending
         </span>
-        <h2 className="mt-3 font-serif text-xl font-semibold text-navy">Bill Created</h2>
+        <h2 className="mt-3 font-serif text-xl font-semibold text-ink">Bill Created</h2>
         <p className="mt-2 text-sm text-ink/60">Reference: BILL-{success.billId}</p>
-        <p className="mt-2 text-2xl font-bold text-navy">{formatAgorotAsILS(success.totalAgorot)}</p>
+        <p className="mt-2 text-2xl font-bold text-ink">{formatAgorotAsILS(success.totalAgorot)}</p>
         <p className="mt-3 text-sm text-ink/60">
           Seats are not confirmed until this is paid — send the link below to the family, or mark it
           paid manually from the holiday&apos;s signup list once payment is received another way.
@@ -85,7 +89,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
                 href={success.paymentLink}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-md bg-gold px-4 py-2 text-sm font-semibold text-navy hover:bg-gold-light"
+                className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
               >
                 Open Payment Page
               </a>
@@ -108,7 +112,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
             setWomenSeats(0);
             setNotes("");
           }}
-          className="mt-6 text-sm font-medium text-navy hover:underline"
+          className="mt-6 text-sm font-medium text-ink hover:underline"
         >
           + Create another bill
         </button>
@@ -120,7 +124,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
     <form onSubmit={handleSubmit} className="max-w-xl space-y-5 rounded-xl border border-line bg-white p-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Full Name</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Full Name</label>
           <input
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -128,7 +132,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Phone</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Phone</label>
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -136,7 +140,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-sm font-medium text-navy">Email (optional)</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Email (optional)</label>
           <input
             type="email"
             value={email}
@@ -147,13 +151,13 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
       </div>
 
       <div>
-        <span className="mb-2 block text-sm font-medium text-navy">Membership</span>
+        <span className="mb-2 block text-sm font-medium text-ink">Membership</span>
         <div className="flex gap-3">
           <button
             type="button"
             onClick={() => setIsMember(true)}
             className={`rounded-md border px-4 py-2 text-sm font-medium ${
-              isMember ? "border-gold bg-gold/15 text-navy" : "border-line text-ink/70"
+              isMember ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
             }`}
           >
             Member
@@ -162,7 +166,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
             type="button"
             onClick={() => setIsMember(false)}
             className={`rounded-md border px-4 py-2 text-sm font-medium ${
-              !isMember ? "border-gold bg-gold/15 text-navy" : "border-line text-ink/70"
+              !isMember ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
             }`}
           >
             Non-Member
@@ -172,7 +176,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Men&apos;s Seats</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Men&apos;s Seats</label>
           <input
             type="number"
             min={0}
@@ -182,7 +186,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy">Women&apos;s Seats</label>
+          <label className="mb-1 block text-sm font-medium text-ink">Women&apos;s Seats</label>
           <input
             type="number"
             min={0}
@@ -194,7 +198,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-navy">Notes (optional)</label>
+        <label className="mb-1 block text-sm font-medium text-ink">Notes (optional)</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -204,11 +208,11 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
       </div>
 
       <div className="flex items-center justify-between border-t border-line pt-5">
-        <p className="text-lg font-semibold text-navy">{formatAgorotAsILS(totalAgorot)}</p>
+        <p className="text-lg font-semibold text-ink">{formatAgorotAsILS(totalAgorot)}</p>
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-md bg-navy px-5 py-2.5 text-sm font-semibold text-cream hover:bg-navy-light disabled:opacity-50"
+          className="rounded-md bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50"
         >
           {isPending ? "Creating..." : "Create Bill"}
         </button>

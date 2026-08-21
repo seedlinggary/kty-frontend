@@ -3,42 +3,48 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 
-async function revalidateForSignup(holidayId: string) {
-  revalidatePath(`/admin/holidays/${holidayId}/signups`);
-  revalidatePath(`/admin/holidays/${holidayId}`);
+async function revalidateForBill(billId: string) {
+  const lineItems = await prisma.signup.findMany({
+    where: { billId },
+    select: { holidayId: true },
+  });
+  for (const item of lineItems) {
+    revalidatePath(`/admin/holidays/${item.holidayId}/signups`);
+    revalidatePath(`/admin/holidays/${item.holidayId}`);
+  }
   revalidatePath("/admin");
 }
 
 export async function markSignupPaidAction(formData: FormData) {
-  const signupId = String(formData.get("signupId") ?? "");
+  const billId = String(formData.get("billId") ?? "");
   const confirmation = String(formData.get("confirmation") ?? "").trim();
 
-  const signup = await prisma.signup.findUnique({ where: { id: signupId } });
-  if (!signup) return;
+  const bill = await prisma.bill.findUnique({ where: { id: billId } });
+  if (!bill) return;
 
   await prisma.$transaction([
-    prisma.signup.update({ where: { id: signupId }, data: { status: "PAID" } }),
+    prisma.bill.update({ where: { id: billId }, data: { status: "PAID" } }),
     prisma.transaction.create({
       data: {
-        signupId,
+        billId,
         confirmation: confirmation || null,
-        amountAgorot: signup.totalAgorot,
+        amountAgorot: bill.totalAgorot,
         source: "manual",
       },
     }),
   ]);
 
-  await revalidateForSignup(signup.holidayId);
+  await revalidateForBill(billId);
 }
 
 export async function cancelSignupAction(formData: FormData) {
-  const signupId = String(formData.get("signupId") ?? "");
-  const signup = await prisma.signup.update({ where: { id: signupId }, data: { status: "CANCELLED" } });
-  await revalidateForSignup(signup.holidayId);
+  const billId = String(formData.get("billId") ?? "");
+  await prisma.bill.update({ where: { id: billId }, data: { status: "CANCELLED" } });
+  await revalidateForBill(billId);
 }
 
 export async function reopenSignupAction(formData: FormData) {
-  const signupId = String(formData.get("signupId") ?? "");
-  const signup = await prisma.signup.update({ where: { id: signupId }, data: { status: "PENDING" } });
-  await revalidateForSignup(signup.holidayId);
+  const billId = String(formData.get("billId") ?? "");
+  await prisma.bill.update({ where: { id: billId }, data: { status: "PENDING" } });
+  await revalidateForBill(billId);
 }

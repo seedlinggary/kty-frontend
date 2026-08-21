@@ -1,6 +1,6 @@
 {
   "site": {
-    "name": "Kehilat Tiferet Yisrael",
+    "name": "Kehillas Tiferes Yisroel",
     "shortName": "KTY"
   },
   "nav": {
@@ -11,8 +11,8 @@
   },
   "home": {
     "heroEyebrow": "Ramat Beit Shemesh Hey",
-    "heroTitle": "Kehilat Tiferet Yisrael",
-    "heroSubtitle": "A small, tight-knit American-Charedi kehilla in Ramat Beit Shemesh Hey, led by Rav Lovy.",
+    "heroTitle": "Kehillas Tiferes Yisroel",
+    "heroSubtitle": "A small, tight-knit Anglo Charedi kehilla in Ramat Beit Shemesh Hey, led by Rav Lovy.",
     "heroCta": "About Our Shul",
     "aboutHeading": "Our Kehilla",
     "aboutCta": "Read More",
@@ -28,7 +28,7 @@
   },
   "about": {
     "eyebrow": "About Us",
-    "heading": "About Kehilat Tiferet Yisrael",
+    "heading": "About Kehillas Tiferes Yisroel",
     "rabbiHeading": "Our Rav",
     "rabbiName": "Rav Lovy",
     "storyHeading": "Our Story",
@@ -42,8 +42,10 @@
     "signUpCta": "Sign Up",
     "perSeatMember": "₪{price} / seat (member)",
     "perSeatNonMember": "₪{price} / seat (non-member)",
-    "formHeading": "Reserve Seats — {holiday}",
-    "formIntro": "Fill in your details below. You'll get a secure payment link to complete checkout on NedarimPlus — no card details are entered on our site.",
+    "formHeading": "Reserve Holiday Seats",
+    "formIntro": "Select seats for any holidays you'd like to attend, fill in your details once, and pay for everything together with one secure NedarimPlus payment link — no card details are entered on our site.",
+    "holidaysSectionHeading": "Choose Your Seats",
+    "contactSectionHeading": "Your Details",
     "fullName": "Full Name",
     "phone": "Phone Number",
     "email": "Email (optional)",
@@ -57,11 +59,13 @@
     "totalLabel": "Total Due",
     "submit": "Continue to Payment",
     "submitting": "Submitting...",
-    "atLeastOneSeat": "Please select at least one seat.",
+    "atLeastOneSeat": "Please select at least one seat for at least one holiday.",
     "missingFields": "Please fill in your name and phone number.",
-    "holidayNotOpen": "Sorry, this seat sale is no longer open.",
+    "holidayNotOpen": "Sorry, one or more of the selected holidays is no longer open. Please review your selection.",
+    "noOpenHolidays": "There are no holiday seat sales open right now.",
     "successHeading": "Almost Done — Payment Required",
-    "successBody": "We've saved your seat request for {holiday}, but it is not yet confirmed.",
+    "successBody": "We've saved your seat request, but it is not yet confirmed.",
+    "breakdownHeading": "Your Selection",
     "notConfirmedNote": "Your seats are only confirmed once payment is completed. Please pay now to secure them — if payment isn't completed, the shul office may need to follow up before your seats can be guaranteed.",
     "statusLabel": "Status",
     "statusPending": "Payment Pending",

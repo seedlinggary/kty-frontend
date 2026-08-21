@@ -34,20 +34,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid json" }, { status: 400 });
   }
 
-  const billId = extractBillIdFromComment(payload.Comments);
-  if (!billId) {
+  const referenceCode = extractBillIdFromComment(payload.Comments);
+  if (!referenceCode) {
     // Expected and routine: this webhook receives every transaction on the Mosad
     // (donations, membership dues, etc.), not just seat payments. No BILL- reference
     // means it's unrelated - skip silently, no need to log or store anything about it.
     return NextResponse.json({ ok: true, matched: false });
   }
 
-  const signup = await prisma.signup.findUnique({ where: { billId } });
-  if (!signup) {
+  const bill = await prisma.bill.findUnique({ where: { referenceCode } });
+  if (!bill) {
     // This one is worth flagging: the comment matched our BILL- pattern but no
-    // signup record exists for it - could mean a signup was deleted, or (rarely)
+    // bill record exists for it - could mean a bill was deleted, or (rarely)
     // an unrelated transaction's comment happened to collide with the pattern.
-    console.error(`[nedarim webhook] BILL- reference found but no matching signup: ${billId}`);
+    console.error(`[nedarim webhook] BILL- reference found but no matching bill: ${referenceCode}`);
     return NextResponse.json({ ok: true, matched: false });
   }
 
@@ -62,11 +62,11 @@ export async function POST(request: NextRequest) {
   }
 
   const amountAgorot = shekelsToAgorot(Number(payload.Amount) || 0);
-  const amountMatches = amountAgorot === signup.totalAgorot;
+  const amountMatches = amountAgorot === bill.totalAgorot;
 
   await prisma.transaction.create({
     data: {
-      signupId: signup.id,
+      billId: bill.id,
       nedarimTransactionId: transactionId,
       confirmation: payload.Confirmation ?? null,
       amountAgorot,
@@ -75,11 +75,11 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  if (amountMatches && signup.status !== "CANCELLED") {
-    await prisma.signup.update({ where: { id: signup.id }, data: { status: "PAID" } });
+  if (amountMatches && bill.status !== "CANCELLED") {
+    await prisma.bill.update({ where: { id: bill.id }, data: { status: "PAID" } });
   } else if (!amountMatches) {
     console.error(
-      `[nedarim webhook] amount mismatch for billId ${billId}: expected ${signup.totalAgorot}, got ${amountAgorot}`
+      `[nedarim webhook] amount mismatch for bill ${referenceCode}: expected ${bill.totalAgorot}, got ${amountAgorot}`
     );
   }
 

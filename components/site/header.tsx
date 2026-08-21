@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LocaleSwitcher } from "@/components/site/locale-switcher";
+import logoIcon from "@/public/logo-icon.png";
 
 const links = [
   { href: "/", key: "home" },
@@ -18,11 +20,11 @@ export function Header() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="bg-navy text-cream">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-        <Link href="/" className="flex items-baseline gap-2 font-serif text-xl font-semibold tracking-tight">
-          <span className="text-gold-light">{tSite("shortName")}</span>
-          <span className="hidden text-base font-normal text-cream/80 sm:inline">
+    <header className="border-b border-line bg-white">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+        <Link href="/" className="flex items-center gap-3">
+          <Image src={logoIcon} alt="" priority className="h-11 w-auto" />
+          <span className="hidden font-serif text-lg font-semibold tracking-tight text-ink sm:inline">
             {tSite("name")}
           </span>
         </Link>
@@ -34,8 +36,8 @@ export function Header() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`text-sm font-medium transition-colors hover:text-gold-light ${
-                  active ? "text-gold-light" : "text-cream/90"
+                className={`border-b-2 pb-1 text-sm font-medium transition-colors hover:text-accent ${
+                  active ? "border-accent text-accent" : "border-transparent text-ink"
                 }`}
               >
                 {t(link.key)}
@@ -48,7 +50,7 @@ export function Header() {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-cream/20 md:hidden"
+          className="flex h-9 w-9 items-center justify-center rounded-md border border-line text-ink md:hidden"
           aria-label="Menu"
           aria-expanded={open}
         >
@@ -64,17 +66,22 @@ export function Header() {
       </div>
 
       {open && (
-        <nav className="flex flex-col gap-1 border-t border-cream/10 px-4 pb-4 md:hidden">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setOpen(false)}
-              className="rounded-md px-2 py-2 text-sm font-medium text-cream/90 hover:bg-navy-light"
-            >
-              {t(link.key)}
-            </Link>
-          ))}
+        <nav className="flex flex-col gap-1 border-t border-line px-4 pb-4 md:hidden">
+          {links.map((link) => {
+            const active = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setOpen(false)}
+                className={`rounded-md px-2 py-2 text-sm font-medium hover:bg-pale ${
+                  active ? "text-accent" : "text-ink"
+                }`}
+              >
+                {t(link.key)}
+              </Link>
+            );
+          })}
           <div className="px-2 py-2">
             <LocaleSwitcher />
           </div>

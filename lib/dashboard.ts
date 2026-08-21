@@ -3,13 +3,13 @@ import { prisma } from "@/lib/prisma";
 export async function getHolidaysWithStats() {
   const holidays = await prisma.holiday.findMany({
     orderBy: { createdAt: "desc" },
-    include: { signups: true },
+    include: { signups: { include: { bill: true } } },
   });
 
   return holidays.map((holiday) => {
-    const active = holiday.signups.filter((s) => s.status !== "CANCELLED");
-    const paid = holiday.signups.filter((s) => s.status === "PAID");
-    const pending = holiday.signups.filter((s) => s.status === "PENDING");
+    const active = holiday.signups.filter((s) => s.bill.status !== "CANCELLED");
+    const paid = holiday.signups.filter((s) => s.bill.status === "PAID");
+    const pending = holiday.signups.filter((s) => s.bill.status === "PENDING");
 
     return {
       ...holiday,

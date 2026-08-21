@@ -40,8 +40,8 @@ export async function generateMetadata({
     },
     description:
       locale === "he"
-        ? "קהילת תפארת ישראל - קהילה חרדית-אמריקאית ברמת בית שמש ה'. מידע על בית הכנסת, זמני תפילות והרשמה למקומות לחגים."
-        : "Kehilat Tiferet Yisrael - a Charedi shul in Ramat Beit Shemesh Hey. Davening times, community info, and holiday seat sign-up.",
+        ? "קהילת תפארת ישראל - קהילה חרדית-אנגלוסקסית ברמת בית שמש ה'. מידע על בית הכנסת, זמני תפילות והרשמה למקומות לחגים."
+        : "Kehillas Tiferes Yisroel - a Charedi shul in Ramat Beit Shemesh Hey. Davening times, community info, and holiday seat sign-up.",
     alternates: {
       languages: { en: "/", he: "/he" },
     },

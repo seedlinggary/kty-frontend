@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Container } from "@/components/ui/container";
 import { SeatSignupForm } from "@/components/site/seat-signup-form";
-import { getHolidayBySlug } from "@/lib/holidays";
+import { getHolidayBySlug, getOpenHolidays } from "@/lib/holidays";
 
 // Must always reflect the latest admin edits (price, open/closed, description) immediately.
 export const dynamic = "force-dynamic";
@@ -28,30 +28,31 @@ export default async function SeatSignupPage({
   setRequestLocale(locale);
   const isHe = locale === "he";
 
-  const holiday = await getHolidayBySlug(slug);
-  if (!holiday || !holiday.isOpen) notFound();
+  const highlighted = await getHolidayBySlug(slug);
+  if (!highlighted || !highlighted.isOpen) notFound();
 
   const t = await getTranslations("seats");
-  const holidayName = isHe ? holiday.nameHe : holiday.nameEn;
+  // Show the full combined form (all open holidays) with this one highlighted, rather
+  // than a separate single-holiday flow - keeps one consistent checkout experience.
+  const holidays = await getOpenHolidays();
 
   return (
     <Container className="py-16">
-      <p className="text-sm font-semibold uppercase tracking-widest text-gold">{t("eyebrow")}</p>
-      <h1 className="mt-2 font-serif text-4xl font-bold text-navy">
-        {t("formHeading", { holiday: holidayName })}
-      </h1>
-      {(isHe ? holiday.descriptionHe : holiday.descriptionEn) && (
-        <p className="mt-3 max-w-2xl text-ink/70">
-          {isHe ? holiday.descriptionHe : holiday.descriptionEn}
-        </p>
-      )}
+      <p className="text-sm font-semibold uppercase tracking-widest text-accent">{t("eyebrow")}</p>
+      <h1 className="mt-2 font-serif text-4xl font-bold text-ink">{t("formHeading")}</h1>
 
       <div className="mt-10 max-w-2xl">
         <SeatSignupForm
-          holidaySlug={holiday.slug}
-          holidayName={holidayName}
-          memberPriceAgorot={holiday.memberPriceAgorot}
-          nonMemberPriceAgorot={holiday.nonMemberPriceAgorot}
+          holidays={holidays.map((h) => ({
+            slug: h.slug,
+            nameEn: h.nameEn,
+            nameHe: h.nameHe,
+            descriptionEn: h.descriptionEn,
+            descriptionHe: h.descriptionHe,
+            memberPriceAgorot: h.memberPriceAgorot,
+            nonMemberPriceAgorot: h.nonMemberPriceAgorot,
+          }))}
+          highlightSlug={highlighted.slug}
           locale={isHe ? "he" : "en"}
         />
       </div>

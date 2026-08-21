@@ -1,11 +1,11 @@
 import { Link } from "@/i18n/navigation";
 
-type Variant = "primary" | "secondary" | "ghost";
+type Variant = "primary" | "ghost" | "onDark";
 
 const variantClasses: Record<Variant, string> = {
-  primary: "bg-gold text-navy hover:bg-gold-light shadow-sm",
-  secondary: "bg-navy text-cream hover:bg-navy-light",
-  ghost: "border border-line text-navy hover:bg-cream-alt",
+  primary: "bg-ink text-white hover:bg-accent shadow-sm",
+  ghost: "border border-line bg-white text-ink hover:bg-pale",
+  onDark: "bg-white text-ink hover:bg-pale shadow-sm",
 };
 
 const base =

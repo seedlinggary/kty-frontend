@@ -13,7 +13,7 @@ export function CopyLinkButton({ link }: { link: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-xs font-medium text-navy hover:underline"
+      className="text-xs font-medium text-ink hover:underline"
     >
       {copied ? "Copied!" : "Copy Payment Link"}
     </button>

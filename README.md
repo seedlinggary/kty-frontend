@@ -1,4 +1,4 @@
-# Kehilat Tiferet Yisrael (KTY) — Website
+# Kehillas Tiferes Yisroel (KTY) — Website
 
 Public site (Home/About, bilingual English/Hebrew) plus a holiday seat-sale system:
 families sign up and pay via a NedarimPlus/Matara payment link (no card data ever

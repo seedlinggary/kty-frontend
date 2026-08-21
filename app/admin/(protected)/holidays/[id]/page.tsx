@@ -20,32 +20,32 @@ export default async function EditHolidayPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const holiday = await prisma.holiday.findUnique({
     where: { id },
-    include: { signups: true },
+    include: { signups: { include: { bill: true } } },
   });
   if (!holiday) notFound();
 
-  const active = holiday.signups.filter((s) => s.status !== "CANCELLED");
-  const paid = holiday.signups.filter((s) => s.status === "PAID");
-  const pending = holiday.signups.filter((s) => s.status === "PENDING");
+  const active = holiday.signups.filter((s) => s.bill.status !== "CANCELLED");
+  const paid = holiday.signups.filter((s) => s.bill.status === "PAID");
+  const pending = holiday.signups.filter((s) => s.bill.status === "PENDING");
   const boundAction = updateHoliday.bind(null, holiday.id);
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-serif text-2xl font-semibold text-navy">{holiday.nameEn}</h1>
+          <h1 className="font-serif text-2xl font-semibold text-ink">{holiday.nameEn}</h1>
           <p className="text-sm text-ink/50">/seats/{holiday.slug}</p>
         </div>
         <div className="flex gap-3">
           <Link
             href={`/admin/holidays/${holiday.id}/signups/new`}
-            className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-navy hover:bg-cream-alt"
+            className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
           >
             + Create Bill
           </Link>
           <Link
             href={`/admin/holidays/${holiday.id}/signups`}
-            className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-cream hover:bg-navy-light"
+            className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
           >
             View Signups ({holiday.signups.length})
           </Link>
@@ -63,7 +63,7 @@ export default async function EditHolidayPage({ params }: { params: Promise<{ id
         />
       </div>
 
-      <h2 className="mt-8 font-serif text-lg font-semibold text-navy">Edit Details</h2>
+      <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Edit Details</h2>
       <div className="mt-3">
         <HolidayForm
           action={boundAction}
@@ -88,7 +88,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase tracking-wide text-ink/50">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-navy">{value}</p>
+      <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
     </div>
   );
 }
