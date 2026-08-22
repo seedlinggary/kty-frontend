@@ -15,7 +15,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [isMember, setIsMember] = useState(false);
+  const [isMember, setIsMember] = useState<boolean | null>(null);
   const [menSeats, setMenSeats] = useState(0);
   const [womenSeats, setWomenSeats] = useState(0);
   const [notes, setNotes] = useState("");
@@ -27,12 +27,16 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const perSeat = isMember ? memberPriceAgorot : nonMemberPriceAgorot;
+  const perSeat = isMember === null ? 0 : isMember ? memberPriceAgorot : nonMemberPriceAgorot;
   const totalAgorot = useMemo(() => perSeat * (menSeats + womenSeats), [perSeat, menSeats, womenSeats]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (isMember === null) {
+      setError("Please select membership status.");
+      return;
+    }
     if (menSeats + womenSeats < 1) {
       setError("Please select at least one seat.");
       return;
@@ -108,6 +112,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
             setFullName("");
             setPhone("");
             setEmail("");
+            setIsMember(null);
             setMenSeats(0);
             setWomenSeats(0);
             setNotes("");
@@ -157,7 +162,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
             type="button"
             onClick={() => setIsMember(true)}
             className={`rounded-md border px-4 py-2 text-sm font-medium ${
-              isMember ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
+              isMember === true ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
             }`}
           >
             Member
@@ -166,7 +171,7 @@ export function AdminSignupForm({ holidaySlug, memberPriceAgorot, nonMemberPrice
             type="button"
             onClick={() => setIsMember(false)}
             className={`rounded-md border px-4 py-2 text-sm font-medium ${
-              !isMember ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
+              isMember === false ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
             }`}
           >
             Non-Member

@@ -19,7 +19,6 @@ export default async function HomePage({
   setRequestLocale(locale);
 
   const t = await getTranslations("home");
-  const tSeats = await getTranslations("seats");
   const [openHolidays, settings] = await Promise.all([getOpenHolidays(), getSiteSettings()]);
   const isHe = locale === "he";
   const about = isHe ? settings.aboutHe : settings.aboutEn;
@@ -87,26 +86,6 @@ export default async function HomePage({
           )}
         </Container>
       </section>
-
-      {openHolidays.length > 1 && (
-        <section>
-          <Container className="py-6">
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {openHolidays.slice(1).map((h) => (
-                <li
-                  key={h.id}
-                  className="flex items-center justify-between rounded-lg border border-line bg-white px-4 py-3"
-                >
-                  <span className="font-medium text-ink">{isHe ? h.nameHe : h.nameEn}</span>
-                  <LinkButton href={`/seats/${h.slug}`} variant="ghost">
-                    {tSeats("signUpCta")}
-                  </LinkButton>
-                </li>
-              ))}
-            </ul>
-          </Container>
-        </section>
-      )}
 
       <section className="bg-pale py-16">
         <Container className="grid gap-10 md:grid-cols-2 md:items-center">

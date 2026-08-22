@@ -85,7 +85,7 @@ export function SeatSignupForm({ holidays, highlightSlug, locale }: Props) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [isMember, setIsMember] = useState(false);
+  const [isMember, setIsMember] = useState<boolean | null>(null);
   const [seats, setSeats] = useState<Record<string, SeatCounts>>({});
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +100,7 @@ export function SeatSignupForm({ holidays, highlightSlug, locale }: Props) {
   }
 
   const totalAgorot = useMemo(() => {
+    if (isMember === null) return 0;
     return holidays.reduce((sum, holiday) => {
       const count = seats[holiday.slug];
       if (!count) return sum;
@@ -111,6 +112,11 @@ export function SeatSignupForm({ holidays, highlightSlug, locale }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (isMember === null) {
+      setError(t("selectMembership"));
+      return;
+    }
 
     const lineItems = holidays
       .map((h) => ({
@@ -235,7 +241,7 @@ export function SeatSignupForm({ holidays, highlightSlug, locale }: Props) {
             type="button"
             onClick={() => setIsMember(true)}
             className={`rounded-md border px-4 py-2 text-sm font-medium ${
-              isMember ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
+              isMember === true ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
             }`}
           >
             {t("member")}
@@ -244,7 +250,7 @@ export function SeatSignupForm({ holidays, highlightSlug, locale }: Props) {
             type="button"
             onClick={() => setIsMember(false)}
             className={`rounded-md border px-4 py-2 text-sm font-medium ${
-              !isMember ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
+              isMember === false ? "border-accent bg-accent/10 text-ink" : "border-line text-ink/70"
             }`}
           >
             {t("nonMember")}

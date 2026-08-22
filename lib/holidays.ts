@@ -4,7 +4,7 @@ export async function getOpenHolidays() {
   try {
     return await prisma.holiday.findMany({
       where: { isOpen: true },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "asc" },
     });
   } catch {
     return [];

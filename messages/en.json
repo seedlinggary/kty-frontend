@@ -59,6 +59,7 @@
     "totalLabel": "Total Due",
     "submit": "Continue to Payment",
     "submitting": "Submitting...",
+    "selectMembership": "Please select your membership status.",
     "atLeastOneSeat": "Please select at least one seat for at least one holiday.",
     "missingFields": "Please fill in your name and phone number.",
     "holidayNotOpen": "Sorry, one or more of the selected holidays is no longer open. Please review your selection.",
