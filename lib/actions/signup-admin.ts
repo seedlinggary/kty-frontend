@@ -48,3 +48,20 @@ export async function reopenSignupAction(formData: FormData) {
   await prisma.bill.update({ where: { id: billId }, data: { status: "PENDING" } });
   await revalidateForBill(billId);
 }
+
+/**
+ * Soft-deletes a single line item (one holiday within a bill), not the whole bill -
+ * a family's other holiday selections in the same payment are untouched. Deleted
+ * rows are excluded from all admin views, dashboard totals, and CSV exports, but
+ * stay in the database (never hard-deleted).
+ */
+export async function deleteSignupLineItemAction(formData: FormData) {
+  const signupId = String(formData.get("signupId") ?? "");
+  const signup = await prisma.signup.update({
+    where: { id: signupId },
+    data: { deletedAt: new Date() },
+  });
+  revalidatePath(`/admin/holidays/${signup.holidayId}/signups`);
+  revalidatePath(`/admin/holidays/${signup.holidayId}`);
+  revalidatePath("/admin");
+}

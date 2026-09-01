@@ -74,9 +74,13 @@ model Signup {
   totalAgorot Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  /// Soft delete: set when an admin removes this line item. Excluded from all
+  /// admin views, dashboard totals, and CSV exports, but kept in the database.
+  deletedAt   DateTime?
 
   @@unique([billId, holidayId])
   @@index([holidayId])
+  @@index([deletedAt])
 }
 
 model Transaction {

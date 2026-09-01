@@ -20,7 +20,7 @@ export default async function EditHolidayPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const holiday = await prisma.holiday.findUnique({
     where: { id },
-    include: { signups: { include: { bill: true } } },
+    include: { signups: { where: { deletedAt: null }, include: { bill: true } } },
   });
   if (!holiday) notFound();
 

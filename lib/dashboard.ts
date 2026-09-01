@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 export async function getHolidaysWithStats() {
   const holidays = await prisma.holiday.findMany({
     orderBy: { createdAt: "desc" },
-    include: { signups: { include: { bill: true } } },
+    include: { signups: { where: { deletedAt: null }, include: { bill: true } } },
   });
 
   return holidays.map((holiday) => {

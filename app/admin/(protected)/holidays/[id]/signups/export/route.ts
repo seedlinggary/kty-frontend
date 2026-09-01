@@ -29,12 +29,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     where: { id },
     include: {
       signups: {
+        where: { deletedAt: null },
         orderBy: { createdAt: "asc" },
         include: {
           bill: {
             include: {
               transactions: { orderBy: { receivedAt: "desc" }, take: 1 },
-              lineItems: { include: { holiday: true } },
+              lineItems: { where: { deletedAt: null }, include: { holiday: true } },
             },
           },
         },
