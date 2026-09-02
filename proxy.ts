@@ -17,6 +17,10 @@ export default auth((req) => {
     return;
   }
 
+  // Unlisted congregant forms live outside the [locale] tree entirely - let
+  // them through untouched rather than having next-intl try to rewrite them.
+  if (pathname.startsWith("/forms")) return;
+
   return intlMiddleware(req);
 });
 

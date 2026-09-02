@@ -97,6 +97,69 @@ model Transaction {
   @@index([billId])
 }
 
+enum FormFieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  EMAIL
+  PHONE
+  NUMBER
+  DATE
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  MULTI_TEXT
+  NAME_DATE_LIST
+}
+
+/// A dynamic, admin-built form. Never listed publicly - reachable only via its
+/// direct /forms/<slug> link (shared out-of-band) or the admin portal, and gated
+/// by isOpen so the link itself does nothing until explicitly published.
+model Form {
+  id              String         @id @default(cuid())
+  slug            String         @unique
+  title           String
+  description     String?
+  thankYouMessage String?
+  isOpen          Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  fields          FormField[]
+  responses       FormResponse[]
+}
+
+model FormField {
+  id         String        @id @default(cuid())
+  form       Form          @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId     String
+  label      String
+  type       FormFieldType
+  required   Boolean       @default(false)
+  /// string[] for SINGLE_CHOICE / MULTI_CHOICE
+  options    Json?
+  helpText   String?
+  order      Int
+  /// Soft-removed from the builder/public form, but kept so older responses
+  /// that reference this field's id (in FormResponse.answers) stay resolvable.
+  archivedAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([formId])
+}
+
+model FormResponse {
+  id        String    @id @default(cuid())
+  form      Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId    String
+  /// { [fieldId]: string | string[] | { name: string; date: string }[] }
+  answers   Json
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([formId])
+  @@index([deletedAt])
+}
+
 model SiteSettings {
   id              Int    @id @default(1)
   aboutEn         String

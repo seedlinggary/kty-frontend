@@ -2,6 +2,8 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
+import type { FormFieldType } from "../lib/generated/prisma/client";
+import { generateTimeSlots } from "../lib/forms";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -58,6 +60,137 @@ async function main() {
     },
   });
   console.log("Sample holiday ready: Yomim Noraim 5787");
+
+  await seedIntakeForm();
+}
+
+async function seedIntakeForm() {
+  const shacharisOptions = generateTimeSlots(6, 0, 8, 30, 15);
+  const minchaOptions = generateTimeSlots(13, 15, 19, 0, 15);
+  const maarivOptions = generateTimeSlots(20, 30, 0, 0, 15);
+
+  const fieldDefs: {
+    label: string;
+    type: FormFieldType;
+    required: boolean;
+    options?: string[];
+    helpText?: string;
+  }[] = [
+    { label: "Husband's Given Name", type: "SHORT_TEXT", required: true },
+    {
+      label: "Husband's Hebrew Name",
+      type: "SHORT_TEXT",
+      required: true,
+      helpText: "e.g., Yaakov ben Avraham",
+    },
+    { label: "Husband's Email", type: "EMAIL", required: true },
+    { label: "Husband's Mobile Number", type: "PHONE", required: true },
+    {
+      label: "Husband: Kohen / Levi / Yisrael",
+      type: "SINGLE_CHOICE",
+      required: false,
+      options: ["Kohen", "Levi", "Yisrael"],
+    },
+    { label: "Wife's Given Name", type: "SHORT_TEXT", required: false },
+    {
+      label: "Wife's Hebrew Name",
+      type: "SHORT_TEXT",
+      required: false,
+      helpText: "e.g., Sarah bat Avraham",
+    },
+    { label: "Wife's Email", type: "EMAIL", required: false },
+    { label: "Wife's Mobile Number", type: "PHONE", required: false },
+    { label: "Family Name", type: "SHORT_TEXT", required: true },
+    {
+      label: "Children's Hebrew Names & Birthdays",
+      type: "NAME_DATE_LIST",
+      required: false,
+      helpText: "Add one row per child",
+    },
+    { label: "Home Phone Number", type: "PHONE", required: false },
+    { label: "Address", type: "SHORT_TEXT", required: true },
+    {
+      label: "Membership Status",
+      type: "SINGLE_CHOICE",
+      required: true,
+      options: ["Member", "Not a member yet"],
+    },
+    {
+      label: "Shacharis Minyan Preference",
+      type: "SINGLE_CHOICE",
+      required: false,
+      options: shacharisOptions,
+    },
+    {
+      label: "Mincha Minyan Preference",
+      type: "SINGLE_CHOICE",
+      required: false,
+      options: minchaOptions,
+    },
+    {
+      label: "Maariv Minyan Preference",
+      type: "SINGLE_CHOICE",
+      required: false,
+      options: maarivOptions,
+    },
+    { label: "Suggestions", type: "LONG_TEXT", required: false },
+    {
+      label: "Talents You Can Offer the Shul / How Would You Like to Get Involved?",
+      type: "LONG_TEXT",
+      required: false,
+    },
+    {
+      label: "Is there anything the shul should know that could help us accommodate your family?",
+      type: "LONG_TEXT",
+      required: false,
+    },
+  ];
+
+  const description = `Thank you so much for taking the time to fill out this form.
+
+Baruch Hashem, we are incredibly excited and grateful to have moved into our new building and to begin this next stage of growth for KTY.
+
+As the kehillah continues to grow, we want every family to feel part of building and shaping its future. Your feedback, ideas and suggestions are extremely valuable to us, and this form will also help us better understand the needs of the kehillah as we plan ahead.
+
+We are excited to develop daily minyanim, learning sedarim, shiurim, programmes and other opportunities for the community. In order to do this properly, we need to understand what works best for the people who will actually be taking part.
+
+At the same time, the building is still a work in progress. There are areas we are continuing to improve, and the Iryah is also expected to carry out further construction, although the exact timing and duration are still unclear. We therefore ask for everyone's patience and understanding as we settle in and continue working to make the shul into a true Makom Torah, Tefillah and Kehillah.
+
+We are very excited about what lies ahead and look forward to building the next chapter of KTY together.`;
+
+  const form = await prisma.form.upsert({
+    where: { slug: "kehilla-intake-5787" },
+    update: {},
+    create: {
+      slug: "kehilla-intake-5787",
+      title: "KTY Kehilla Information Form",
+      description,
+      thankYouMessage: "Thank you for your response — it has been received.",
+      // Draft on purpose: stays unreachable (even with the link) until opened from admin.
+      isOpen: false,
+    },
+  });
+
+  const existingFieldsCount = await prisma.formField.count({ where: { formId: form.id } });
+  if (existingFieldsCount === 0) {
+    for (let i = 0; i < fieldDefs.length; i++) {
+      const field = fieldDefs[i];
+      await prisma.formField.create({
+        data: {
+          formId: form.id,
+          label: field.label,
+          type: field.type,
+          required: field.required,
+          options: field.options ?? undefined,
+          helpText: field.helpText ?? null,
+          order: i,
+        },
+      });
+    }
+    console.log(`Created ${fieldDefs.length} fields for the intake form.`);
+  }
+
+  console.log(`Form ready (draft): ${form.title} -> /forms/${form.slug}`);
 }
 
 main()

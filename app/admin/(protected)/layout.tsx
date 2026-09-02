@@ -7,6 +7,7 @@ import logoIcon from "@/public/logo-icon.png";
 const navLinks = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/holidays", label: "Holidays" },
+  { href: "/admin/forms", label: "Forms" },
   { href: "/admin/settings", label: "Site Settings" },
 ];
 
@@ -41,7 +42,7 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
         </div>
       </aside>
 
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <header className="flex items-center justify-between border-b border-line bg-white px-4 py-3 sm:hidden">
           <div className="flex items-center gap-2">
             <Image src={logoIcon} alt="" className="h-8 w-auto" />
