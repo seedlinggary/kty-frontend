@@ -75,31 +75,95 @@ async function seedIntakeForm() {
     required: boolean;
     options?: string[];
     helpText?: string;
+    /** Label of an earlier field this one's visibility/label depends on. */
+    conditionLabel?: string;
+    conditionValue?: string;
+    conditionMode?: "SHOW_IF" | "HIDE_IF";
+    /** Replaces `label` whenever the condition value matches (stays always-visible). */
+    altLabel?: string;
   }[] = [
-    { label: "Husband's Given Name", type: "SHORT_TEXT", required: true },
+    {
+      label: "Marital Status",
+      type: "SINGLE_CHOICE",
+      required: true,
+      options: ["Married", "Single"],
+      helpText: "For our few single parents - we just need a bit less info from you below.",
+    },
+    {
+      label: "Husband's Given Name",
+      type: "SHORT_TEXT",
+      required: true,
+      conditionLabel: "Marital Status",
+      conditionValue: "Single",
+      altLabel: "Your Given Name",
+    },
     {
       label: "Husband's Hebrew Name",
       type: "SHORT_TEXT",
       required: true,
       helpText: "e.g., Yaakov ben Avraham",
+      conditionLabel: "Marital Status",
+      conditionValue: "Single",
+      altLabel: "Your Hebrew Name",
     },
-    { label: "Husband's Email", type: "EMAIL", required: true },
-    { label: "Husband's Mobile Number", type: "PHONE", required: true },
+    {
+      label: "Husband's Email",
+      type: "EMAIL",
+      required: true,
+      conditionLabel: "Marital Status",
+      conditionValue: "Single",
+      altLabel: "Your Email",
+    },
+    {
+      label: "Husband's Mobile Number",
+      type: "PHONE",
+      required: true,
+      conditionLabel: "Marital Status",
+      conditionValue: "Single",
+      altLabel: "Your Mobile Number",
+    },
     {
       label: "Husband: Kohen / Levi / Yisrael",
       type: "SINGLE_CHOICE",
       required: false,
       options: ["Kohen", "Levi", "Yisrael"],
+      conditionLabel: "Marital Status",
+      conditionValue: "Single",
+      altLabel: "Kohen / Levi / Yisrael",
     },
-    { label: "Wife's Given Name", type: "SHORT_TEXT", required: false },
+    {
+      label: "Wife's Given Name",
+      type: "SHORT_TEXT",
+      required: false,
+      conditionLabel: "Marital Status",
+      conditionValue: "Married",
+      conditionMode: "SHOW_IF",
+    },
     {
       label: "Wife's Hebrew Name",
       type: "SHORT_TEXT",
       required: false,
       helpText: "e.g., Sarah bat Avraham",
+      conditionLabel: "Marital Status",
+      conditionValue: "Married",
+      conditionMode: "SHOW_IF",
     },
-    { label: "Wife's Email", type: "EMAIL", required: false },
-    { label: "Wife's Mobile Number", type: "PHONE", required: false },
+    {
+      label: "Wife's Email",
+      type: "EMAIL",
+      required: false,
+      conditionLabel: "Marital Status",
+      conditionValue: "Married",
+      conditionMode: "SHOW_IF",
+    },
+    {
+      label: "Wife's Mobile Number",
+      type: "PHONE",
+      required: false,
+      conditionLabel: "Marital Status",
+      conditionValue: "Married",
+      conditionMode: "SHOW_IF",
+    },
     { label: "Family Name", type: "SHORT_TEXT", required: true },
     {
       label: "Children's Hebrew Names & Birthdays",
@@ -171,24 +235,52 @@ We are very excited about what lies ahead and look forward to building the next 
     },
   });
 
-  const existingFieldsCount = await prisma.formField.count({ where: { formId: form.id } });
-  if (existingFieldsCount === 0) {
-    for (let i = 0; i < fieldDefs.length; i++) {
-      const field = fieldDefs[i];
-      await prisma.formField.create({
-        data: {
-          formId: form.id,
-          label: field.label,
-          type: field.type,
-          required: field.required,
-          options: field.options ?? undefined,
-          helpText: field.helpText ?? null,
-          order: i,
-        },
-      });
+  // Idempotent sync by label: update fields that already exist (fixing order,
+  // wording, etc.), create ones that don't. Never deletes - unlisted fieldDefs
+  // would need to be archived by hand via the admin builder, same as any other
+  // field removal, so old responses referencing them stay resolvable.
+  const existingFields = await prisma.formField.findMany({ where: { formId: form.id } });
+  const byLabel = new Map(existingFields.map((f) => [f.label, f]));
+  const labelToId = new Map<string, string>();
+
+  for (let i = 0; i < fieldDefs.length; i++) {
+    const def = fieldDefs[i];
+    const data = {
+      label: def.label,
+      type: def.type,
+      required: def.required,
+      options: def.options ?? undefined,
+      helpText: def.helpText ?? null,
+      order: i,
+    };
+    const existing = byLabel.get(def.label);
+    if (existing) {
+      await prisma.formField.update({ where: { id: existing.id }, data });
+      labelToId.set(def.label, existing.id);
+    } else {
+      const created = await prisma.formField.create({ data: { ...data, formId: form.id } });
+      labelToId.set(def.label, created.id);
     }
-    console.log(`Created ${fieldDefs.length} fields for the intake form.`);
   }
+
+  // Second pass: resolve each field's conditionLabel to the depended-on field's id.
+  for (const def of fieldDefs) {
+    if (!def.conditionLabel) continue;
+    const fieldId = labelToId.get(def.label);
+    const conditionFieldId = labelToId.get(def.conditionLabel);
+    if (!fieldId || !conditionFieldId) continue;
+    await prisma.formField.update({
+      where: { id: fieldId },
+      data: {
+        conditionFieldId,
+        conditionValue: def.conditionValue ?? null,
+        conditionMode: def.conditionMode ?? null,
+        altLabel: def.altLabel ?? null,
+      },
+    });
+  }
+
+  console.log(`Synced ${fieldDefs.length} fields for the intake form.`);
 
   console.log(`Form ready (draft): ${form.title} -> /forms/${form.slug}`);
 }

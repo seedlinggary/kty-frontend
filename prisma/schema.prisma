@@ -126,6 +126,11 @@ model Form {
   responses       FormResponse[]
 }
 
+enum FieldConditionMode {
+  SHOW_IF
+  HIDE_IF
+}
+
 model FormField {
   id         String        @id @default(cuid())
   form       Form          @relation(fields: [formId], references: [id], onDelete: Cascade)
@@ -142,6 +147,17 @@ model FormField {
   archivedAt DateTime?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
+
+  /// Conditional logic, evaluated against another (earlier) field's answer:
+  /// - conditionFieldId/conditionValue: which field + which answer value triggers it
+  /// - conditionMode: if set, controls this field's visibility (SHOW_IF/HIDE_IF match)
+  /// - altLabel: if set, replaces `label` whenever the condition value matches,
+  ///   independent of conditionMode (lets a field stay always-visible but change
+  ///   its wording based on an earlier answer, e.g. "Husband's Name" -> "Your Name")
+  conditionFieldId String?
+  conditionValue    String?
+  conditionMode     FieldConditionMode?
+  altLabel          String?
 
   @@index([formId])
 }

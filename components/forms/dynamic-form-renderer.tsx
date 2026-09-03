@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { getFieldOptions, isAnswerEmpty } from "@/lib/forms";
-import type { FormFieldType } from "@/lib/generated/prisma/client";
+import { getFieldOptions, getFieldLabel, isAnswerEmpty, isFieldVisible } from "@/lib/forms";
+import type { FieldConditionMode, FormFieldType } from "@/lib/generated/prisma/client";
 
 export type RenderableField = {
   id: string;
@@ -11,6 +11,10 @@ export type RenderableField = {
   required: boolean;
   options: unknown;
   helpText: string | null;
+  conditionFieldId?: string | null;
+  conditionValue?: string | null;
+  conditionMode?: FieldConditionMode | null;
+  altLabel?: string | null;
 };
 
 type NameDateEntry = { name: string; date: string };
@@ -263,19 +267,28 @@ export function DynamicFormRenderer({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const visibleFields = fields.filter((field) => isFieldVisible(field, answers));
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    for (const field of fields) {
+    for (const field of visibleFields) {
       if (field.required && isAnswerEmpty(answers[field.id])) {
-        setError(`"${field.label}" is required.`);
+        setError(`"${getFieldLabel(field, answers)}" is required.`);
         return;
       }
     }
 
+    // Only send answers for fields that were actually shown - a hidden field (e.g.
+    // spouse info entered before switching to "Single") shouldn't be submitted.
+    const visibleIds = new Set(visibleFields.map((f) => f.id));
+    const payload = Object.fromEntries(
+      Object.entries(answers).filter(([id]) => visibleIds.has(id))
+    );
+
     startTransition(async () => {
-      const result = await onSubmit(answers);
+      const result = await onSubmit(payload);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -286,10 +299,10 @@ export function DynamicFormRenderer({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {fields.map((field) => (
+      {visibleFields.map((field) => (
         <div key={field.id}>
           <label className="mb-1 block text-sm font-medium text-ink">
-            {field.label}
+            {getFieldLabel(field, answers)}
             {field.required && <span className="text-red-600"> *</span>}
           </label>
           {field.helpText && <p className="mb-1.5 text-xs text-ink/50">{field.helpText}</p>}

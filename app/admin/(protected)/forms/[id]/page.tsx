@@ -72,6 +72,12 @@ export default async function EditFormPage({ params }: { params: Promise<{ id: s
               required: f.required,
               options: Array.isArray(f.options) ? (f.options as string[]) : [],
               helpText: f.helpText ?? "",
+              // Persisted fields' key is their id (see FormBuilder), so referencing
+              // another field's id here as conditionKey resolves correctly on save.
+              conditionKey: f.conditionFieldId,
+              conditionValue: f.conditionValue,
+              conditionMode: f.conditionMode,
+              altLabel: f.altLabel,
             })),
           }}
         />

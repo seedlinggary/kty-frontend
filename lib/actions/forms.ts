@@ -4,15 +4,24 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/slug";
 import { isChoiceType } from "@/lib/forms";
-import type { FormFieldType } from "@/lib/generated/prisma/client";
+import type { FieldConditionMode, FormFieldType } from "@/lib/generated/prisma/client";
 
 export type FieldDraft = {
+  /** Stable per-row identifier from the builder, used to resolve conditionKey
+   *  references to real ids within the same save (works even for two brand-new
+   *  fields created together, e.g. a question and the one it depends on). */
+  key: string;
   id?: string;
   label: string;
   type: FormFieldType;
   required: boolean;
   options: string[];
   helpText: string;
+  /** key of the field this one's visibility/label depends on, if any. */
+  conditionKey?: string | null;
+  conditionValue?: string | null;
+  conditionMode?: FieldConditionMode | null;
+  altLabel?: string | null;
 };
 
 export type SaveFormInput = {
@@ -72,6 +81,8 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
       }
     }
 
+    const keyToId = new Map<string, string>();
+
     for (let i = 0; i < input.fields.length; i++) {
       const field = input.fields[i];
       const data = {
@@ -86,9 +97,28 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
 
       if (field.id) {
         await tx.formField.update({ where: { id: field.id }, data });
+        keyToId.set(field.key, field.id);
       } else {
-        await tx.formField.create({ data: { ...data, formId: formRecord.id } });
+        const created = await tx.formField.create({ data: { ...data, formId: formRecord.id } });
+        keyToId.set(field.key, created.id);
       }
+    }
+
+    // Second pass: now that every field (new or existing) has a real id, resolve
+    // each field's conditionKey to the depended-on field's id and persist it.
+    for (const field of input.fields) {
+      const id = keyToId.get(field.key);
+      if (!id) continue;
+      const conditionFieldId = field.conditionKey ? keyToId.get(field.conditionKey) ?? null : null;
+      await tx.formField.update({
+        where: { id },
+        data: {
+          conditionFieldId,
+          conditionValue: conditionFieldId ? field.conditionValue?.trim() || null : null,
+          conditionMode: conditionFieldId ? field.conditionMode ?? null : null,
+          altLabel: conditionFieldId ? field.altLabel?.trim() || null : null,
+        },
+      });
     }
 
     return formRecord.id;

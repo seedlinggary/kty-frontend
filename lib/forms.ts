@@ -1,4 +1,4 @@
-import type { FormFieldType } from "@/lib/generated/prisma/client";
+import type { FieldConditionMode, FormFieldType } from "@/lib/generated/prisma/client";
 
 export const FORM_FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
   SHORT_TEXT: "Short Text",
@@ -71,6 +71,45 @@ export function isAnswerEmpty(value: unknown): boolean {
     });
   }
   return false;
+}
+
+export type ConditionSource = {
+  conditionFieldId?: string | null;
+  conditionValue?: string | null;
+  conditionMode?: FieldConditionMode | null;
+  altLabel?: string | null;
+};
+
+function answerMatchesConditionValue(answer: unknown, conditionValue: string): boolean {
+  if (answer == null) return false;
+  if (Array.isArray(answer)) return answer.includes(conditionValue);
+  return String(answer) === conditionValue;
+}
+
+/** Whether the field this depends on currently holds the answer it's watching for. */
+export function isConditionMet(field: ConditionSource, answers: Record<string, unknown>): boolean {
+  if (!field.conditionFieldId || !field.conditionValue) return false;
+  return answerMatchesConditionValue(answers[field.conditionFieldId], field.conditionValue);
+}
+
+/** Whether a field should render at all, given the current answers. No dependency = always visible. */
+export function isFieldVisible(field: ConditionSource, answers: Record<string, unknown>): boolean {
+  if (!field.conditionFieldId) return true;
+
+  // A dependent question shouldn't guess a default before its dependency is
+  // actually answered - stay hidden until then, even for altLabel-only fields
+  // that have no conditionMode (they're "always visible once answered").
+  if (isAnswerEmpty(answers[field.conditionFieldId])) return false;
+
+  if (!field.conditionMode) return true;
+  const met = isConditionMet(field, answers);
+  return field.conditionMode === "SHOW_IF" ? met : !met;
+}
+
+/** The label to display: altLabel when the (always-visible) condition value matches, else the base label. */
+export function getFieldLabel(field: ConditionSource & { label: string }, answers: Record<string, unknown>): string {
+  if (field.altLabel && isConditionMet(field, answers)) return field.altLabel;
+  return field.label;
 }
 
 /** Generates "H:MM AM/PM" labels at a fixed interval between two times, inclusive of both ends. */

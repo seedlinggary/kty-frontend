@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveForm, type FieldDraft as SavedFieldDraft } from "@/lib/actions/forms";
 import { slugify } from "@/lib/slug";
-import { FORM_FIELD_TYPE_LABELS, FORM_FIELD_TYPES, isChoiceType } from "@/lib/forms";
-import type { FormFieldType } from "@/lib/generated/prisma/client";
+import { FORM_FIELD_TYPE_LABELS, FORM_FIELD_TYPES, getFieldOptions, isChoiceType } from "@/lib/forms";
+import type { FieldConditionMode, FormFieldType } from "@/lib/generated/prisma/client";
 
 type FieldDraft = {
   key: string;
@@ -15,6 +15,10 @@ type FieldDraft = {
   required: boolean;
   options: string[];
   helpText: string;
+  conditionKey?: string | null;
+  conditionValue?: string | null;
+  conditionMode?: FieldConditionMode | null;
+  altLabel?: string | null;
 };
 
 type Props = {
@@ -121,12 +125,17 @@ export function FormBuilder({ formId, initial }: Props) {
 
     startTransition(async () => {
       const payload: SavedFieldDraft[] = fields.map((f) => ({
+        key: f.key,
         id: f.id,
         label: f.label,
         type: f.type,
         required: f.required,
         options: f.options,
         helpText: f.helpText,
+        conditionKey: f.conditionKey,
+        conditionValue: f.conditionValue,
+        conditionMode: f.conditionMode,
+        altLabel: f.altLabel,
       }));
 
       const result = await saveForm({
@@ -275,6 +284,87 @@ export function FormBuilder({ formId, initial }: Props) {
                       onChange={(options) => updateField(field.key, { options })}
                     />
                   )}
+
+                  {(() => {
+                    const dependsOnOptions = fields
+                      .slice(0, index)
+                      .filter((f) => isChoiceType(f.type) && f.key !== field.key);
+                    const dependsOn = fields.find((f) => f.key === field.conditionKey);
+                    const dependsOnChoices = dependsOn ? getFieldOptions(dependsOn.options) : [];
+
+                    return (
+                      <div className="rounded-md border border-dashed border-line p-3">
+                        <p className="text-xs font-medium text-ink/60">Conditional Logic (optional)</p>
+                        <p className="mt-0.5 text-xs text-ink/40">
+                          Show, hide, or relabel this question based on the answer to an earlier
+                          multiple-choice question.
+                        </p>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <select
+                            value={field.conditionKey ?? ""}
+                            onChange={(e) =>
+                              updateField(field.key, {
+                                conditionKey: e.target.value || null,
+                                conditionValue: null,
+                                conditionMode: null,
+                                altLabel: null,
+                              })
+                            }
+                            className="rounded-md border border-line px-2 py-1.5 text-sm"
+                          >
+                            <option value="">No dependency</option>
+                            {dependsOnOptions.map((f) => (
+                              <option key={f.key} value={f.key}>
+                                Depends on: {f.label || "(untitled question)"}
+                              </option>
+                            ))}
+                          </select>
+                          {field.conditionKey && (
+                            <select
+                              value={field.conditionValue ?? ""}
+                              onChange={(e) =>
+                                updateField(field.key, { conditionValue: e.target.value || null })
+                              }
+                              className="rounded-md border border-line px-2 py-1.5 text-sm"
+                            >
+                              <option value="">When answer is...</option>
+                              {dependsOnChoices.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        {field.conditionKey && field.conditionValue && (
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            <select
+                              value={field.conditionMode ?? ""}
+                              onChange={(e) =>
+                                updateField(field.key, {
+                                  conditionMode: (e.target.value || null) as FieldConditionMode | null,
+                                })
+                              }
+                              className="rounded-md border border-line px-2 py-1.5 text-sm"
+                            >
+                              <option value="">Always shown</option>
+                              <option value="SHOW_IF">Show only when matched</option>
+                              <option value="HIDE_IF">Hide when matched</option>
+                            </select>
+                            <input
+                              type="text"
+                              placeholder="Alternate label when matched (optional)"
+                              value={field.altLabel ?? ""}
+                              onChange={(e) =>
+                                updateField(field.key, { altLabel: e.target.value || null })
+                              }
+                              className="rounded-md border border-line px-2 py-1.5 text-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   <button
