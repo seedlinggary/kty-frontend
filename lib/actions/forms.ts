@@ -81,10 +81,18 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
       }
     }
 
+    // The builder only ever lets a field depend on an earlier one (see the
+    // "Depends on" dropdown in FormBuilder), so a single forward pass is
+    // enough: by the time we reach a dependent field, keyToId already has
+    // its dependency's real id (new or existing) - no second pass of extra
+    // per-field queries needed, which matters since production runs through
+    // Supabase's transaction-mode pooler and doubling the query count inside
+    // one interactive transaction there caused real save failures.
     const keyToId = new Map<string, string>();
 
     for (let i = 0; i < input.fields.length; i++) {
       const field = input.fields[i];
+      const conditionFieldId = field.conditionKey ? keyToId.get(field.conditionKey) ?? null : null;
       const data = {
         label: field.label.trim(),
         type: field.type,
@@ -93,6 +101,10 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
         helpText: field.helpText.trim() || null,
         order: i,
         archivedAt: null,
+        conditionFieldId,
+        conditionValue: conditionFieldId ? field.conditionValue?.trim() || null : null,
+        conditionMode: conditionFieldId ? field.conditionMode ?? null : null,
+        altLabel: conditionFieldId ? field.altLabel?.trim() || null : null,
       };
 
       if (field.id) {
@@ -102,23 +114,6 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
         const created = await tx.formField.create({ data: { ...data, formId: formRecord.id } });
         keyToId.set(field.key, created.id);
       }
-    }
-
-    // Second pass: now that every field (new or existing) has a real id, resolve
-    // each field's conditionKey to the depended-on field's id and persist it.
-    for (const field of input.fields) {
-      const id = keyToId.get(field.key);
-      if (!id) continue;
-      const conditionFieldId = field.conditionKey ? keyToId.get(field.conditionKey) ?? null : null;
-      await tx.formField.update({
-        where: { id },
-        data: {
-          conditionFieldId,
-          conditionValue: conditionFieldId ? field.conditionValue?.trim() || null : null,
-          conditionMode: conditionFieldId ? field.conditionMode ?? null : null,
-          altLabel: conditionFieldId ? field.altLabel?.trim() || null : null,
-        },
-      });
     }
 
     return formRecord.id;
