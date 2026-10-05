@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import type { AdminRole } from "@/lib/generated/prisma/client";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -27,8 +28,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, admin.passwordHash);
         if (!valid) return null;
 
-        return { id: admin.id, email: admin.email, name: admin.name };
+        return { id: admin.id, email: admin.email, name: admin.name, role: admin.role };
       },
     }),
   ],
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) token.role = (user as { role?: AdminRole }).role;
+      return token;
+    },
+    session({ session, token }) {
+      const role = (token as { role?: AdminRole }).role;
+      if (role) session.user.role = role;
+      return session;
+    },
+  },
 });

@@ -78,6 +78,11 @@ the admin signup list (there's a field for the confirmation number).
 
 ## Admin workflows
 
+- **Search** (`/admin/search`): one box - name, email, or phone - searches
+  across holiday seats, donations, memberships (with their full payment
+  history inline), payment links, other NedarimPlus transactions, untracked
+  payment issues, and every congregant form submission, so staff can pull up
+  everything about one person without checking each admin page separately.
 - **Holidays** (`/admin/holidays`): create a new holiday any time — Sukkos,
   Pesach, next year's Yomim Noraim, etc. Each holiday has its own member/
   non-member seat price and an open/closed toggle. Creating one immediately
@@ -88,6 +93,60 @@ the admin signup list (there's a field for the confirmation number).
 - **Site Settings** (`/admin/settings`): edit the About text, address, phone,
   email, hero tagline, and davening times shown on the public site — no
   redeploy needed.
+- **Donations** (`/admin/donations`): every one-time donation from `/donate`
+  (any amount, bilingual), with Mark Paid / Cancel / Flag Failed actions.
+  `/donate` also has a tab to switch to the membership form inline, so either
+  page works as an entry point to both.
+- **Memberships** (`/admin/memberships`): monthly recurring dues from
+  `/membership` (Associate ₪100 or Full ₪200), charged via NedarimPlus's
+  standing-order ("Keva") mechanism rather than a one-time payment. "Payment
+  History" on each row opens a full detail page with every charge NedarimPlus
+  has reported for that member (date, amount, confirmation), plus any
+  flagged payment issues for them.
+- Both forms require an email (the one reliable way to reach someone about a
+  failed payment) and collect phone/address/city without requiring them -
+  worded as plain fields rather than "(optional)," since the goal is still to
+  capture that info whenever it's given, not to signal it's skippable.
+  Address and city are also passed through as NedarimPlus's own `Street`/
+  `City` payment-link params, so they're pre-filled on the NedarimPlus page
+  instead of being asked for twice.
+- **Payment Links** (`/admin/payment-links`): a super admin can create a
+  fixed, predetermined-amount link for a pledge, event fee, or correcting an
+  underpayment, so someone can just pay that exact amount.
+- **Payment Follow-Ups** (`/admin/payment-follow-ups`): NedarimPlus never
+  tells us directly when a card is declined — only successes trigger the
+  webhook. So anything that stays PENDING for more than 2 hours (checked
+  daily, see `vercel.json`) gets flagged automatically here as a likely
+  failure; staff can also flag one by hand right away after reading a
+  forwarded NedarimPlus decline email. "Send Email" (one at a time or all at
+  once) sends a bilingual follow-up with a fresh payment link. If someone
+  retries and it goes through, the follow-up resolves itself automatically —
+  nothing to track by hand.
+  "+ Paste a Decline Email" on this page parses NedarimPlus's actual decline
+  notification email (paste the full body) and matches it automatically to
+  the right donation/membership/bill if it's one of ours (by the comment
+  reference, or by order number against a known membership's standing-order
+  ID), or tracks it on its own with the email's contact details if it's a
+  decline on something our system never created (e.g. a pre-existing standing
+  order). The first time an email is sent for one of those standalone cases,
+  a real Payment Link is generated for it automatically, so from then on a
+  successful retry closes the loop exactly like everything else.
+  If `NEDARIM_APIPASSWORD` is set, memberships get a genuinely automatic
+  check too (no email involved at all): the same daily job calls NedarimPlus's
+  standing-order reporting API, which does expose a real decline reason per
+  standing order (unlike one-time payments, where NedarimPlus has no decline
+  data available at all, by their own documentation).
+- **Other Transactions** (`/admin/other-transactions`): any successful
+  NedarimPlus payment that doesn't match one of our own links (a pre-existing
+  standing order set up directly in NedarimPlus, or any other payment link
+  shared outside this app) is still recorded here rather than silently
+  dropped, so staff have a complete picture of everything coming through the
+  Mosad.
+- **Super admin overrides**: a `SUPERADMIN`-role admin (the seeded admin is
+  one by default) can directly overwrite a donation/membership/payment-link's
+  recorded details from an "Edit (Override)" link, and is the only role that
+  can create a new Payment Link. A plain `ADMIN` can view everything and send
+  follow-up emails, but not freehand-edit a payment record.
 
 ## Notes
 

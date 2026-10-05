@@ -13,21 +13,28 @@ export default async function ThankYouPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ bill?: string }>;
+  searchParams: Promise<{ bill?: string; donation?: string; membership?: string; link?: string }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const { bill } = await searchParams;
+  const sp = await searchParams;
 
   const t = await getTranslations("thankYou");
 
-  const foundBill = bill
-    ? await prisma.bill.findUnique({ where: { referenceCode: bill } }).catch(() => null)
-    : null;
-
   let message = t("notFound");
-  if (foundBill) {
-    message = foundBill.status === "PAID" ? t("paid") : t("pending");
+
+  if (sp.bill) {
+    const bill = await prisma.bill.findUnique({ where: { referenceCode: sp.bill } }).catch(() => null);
+    if (bill) message = bill.status === "PAID" ? t("paid") : t("pending");
+  } else if (sp.donation) {
+    const donation = await prisma.donation.findUnique({ where: { referenceCode: sp.donation } }).catch(() => null);
+    if (donation) message = donation.status === "PAID" ? t("paidDonation") : t("pendingDonation");
+  } else if (sp.membership) {
+    const membership = await prisma.membership.findUnique({ where: { referenceCode: sp.membership } }).catch(() => null);
+    if (membership) message = membership.status === "ACTIVE" ? t("paidMembership") : t("pendingMembership");
+  } else if (sp.link) {
+    const link = await prisma.paymentLink.findUnique({ where: { referenceCode: sp.link } }).catch(() => null);
+    if (link) message = link.status === "PAID" ? t("paidLink") : t("pendingLink");
   }
 
   return (

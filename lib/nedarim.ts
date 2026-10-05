@@ -15,10 +15,23 @@ export interface PaymentLinkInput {
   billId: string;
   amountAgorot: number;
   clientName: string;
-  phone: string;
+  phone?: string | null;
   email?: string | null;
+  street?: string | null;
+  city?: string | null;
   groupe: string;
   language?: "en" | "he";
+  /** Avour prefix, e.g. "BILL" (default), "DON", "MEM", "LINK" - see REFERENCE_PREFIXES. */
+  referencePrefix?: string;
+  /** Redirect query param name holding the reference code; defaults to "bill" for back-compat. */
+  redirectParam?: string;
+}
+
+function buildRedirect(input: { billId: string; redirectParam?: string }): string | null {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) return null;
+  const param = input.redirectParam ?? "bill";
+  return `${siteUrl.replace(/^https?:\/\//, "")}/pay/thank-you?${param}=${input.billId}`;
 }
 
 /**
@@ -47,25 +60,71 @@ export function buildPaymentLink(input: PaymentLinkInput): string | null {
     ["PaymentLock", "1"],
     ["OnlyNormal", "1"],
     ["ClientName", input.clientName],
-    ["Phone", input.phone],
   ];
+  if (input.phone) pairs.push(["Phone", input.phone]);
   if (input.email) pairs.push(["Email", input.email]);
+  if (input.street) pairs.push(["Street", input.street]);
+  if (input.city) pairs.push(["City", input.city]);
   pairs.push(["Groupe", input.groupe]);
   pairs.push(["GroupeLock", "1"]);
-  pairs.push(["Avour", `BILL-${input.billId}`]);
+  pairs.push(["Avour", `${input.referencePrefix ?? "BILL"}-${input.billId}`]);
   pairs.push(["AvourLock", "1"]);
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (siteUrl) {
-    pairs.push([
-      "Redirect",
-      `${siteUrl.replace(/^https?:\/\//, "")}/pay/thank-you?bill=${input.billId}`,
-    ]);
-  }
+  const redirect = buildRedirect(input);
+  if (redirect) pairs.push(["Redirect", redirect]);
   if (input.language === "en") {
     pairs.push(["Language", "en"]);
   }
   // "he" (or unspecified) leaves the page in its default Hebrew display.
+
+  const query = pairs.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+  return `${PAYMENT_BASE_URL}?${query}`;
+}
+
+export interface RecurringPaymentLinkInput {
+  membershipId: string;
+  monthlyAmountAgorot: number;
+  clientName: string;
+  phone?: string | null;
+  email?: string | null;
+  street?: string | null;
+  city?: string | null;
+  groupe: string;
+  language?: "en" | "he";
+}
+
+/**
+ * Builds a NedarimPlus standing-order ("Keva") direct payment link for a
+ * monthly recurring charge - same base mechanism as buildPaymentLink, but
+ * OnlyKeva=1 instead of OnlyNormal=1, and Payment is left unset (NedarimPlus
+ * treats a blank Payment count as an unlimited/ongoing standing order rather
+ * than a fixed number of installments).
+ */
+export function buildRecurringPaymentLink(input: RecurringPaymentLinkInput): string | null {
+  const mosad = process.env.NEDARIM_MOSAD;
+  if (!mosad) return null;
+
+  const pairs: [string, string][] = [
+    ["mosad", mosad],
+    ["Amount", String(agorotToShekels(input.monthlyAmountAgorot))],
+    ["AmountLock", "1"],
+    ["OnlyKeva", "1"],
+    ["ClientName", input.clientName],
+  ];
+  if (input.phone) pairs.push(["Phone", input.phone]);
+  if (input.email) pairs.push(["Email", input.email]);
+  if (input.street) pairs.push(["Street", input.street]);
+  if (input.city) pairs.push(["City", input.city]);
+  pairs.push(["Groupe", input.groupe]);
+  pairs.push(["GroupeLock", "1"]);
+  pairs.push(["Avour", `MEM-${input.membershipId}`]);
+  pairs.push(["AvourLock", "1"]);
+
+  const redirect = buildRedirect({ billId: input.membershipId, redirectParam: "membership" });
+  if (redirect) pairs.push(["Redirect", redirect]);
+  if (input.language === "en") {
+    pairs.push(["Language", "en"]);
+  }
 
   const query = pairs.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
   return `${PAYMENT_BASE_URL}?${query}`;
@@ -78,4 +137,19 @@ export function extractBillIdFromComment(comment: string | null | undefined): st
   if (!comment) return null;
   const match = comment.match(/BILL-([A-Za-z0-9]+)/);
   return match ? match[1] : null;
+}
+
+export type ReferenceKind = "BILL" | "DON" | "MEM" | "LINK";
+
+/**
+ * Generalized version of extractBillIdFromComment, for routing a webhook
+ * payload to whichever payable type its Avour/Comments prefix indicates.
+ */
+export function extractReferenceFromComment(
+  comment: string | null | undefined
+): { kind: ReferenceKind; code: string } | null {
+  if (!comment) return null;
+  const match = comment.match(/\b(BILL|DON|MEM|LINK)-([A-Za-z0-9]+)/);
+  if (!match) return null;
+  return { kind: match[1] as ReferenceKind, code: match[2] };
 }

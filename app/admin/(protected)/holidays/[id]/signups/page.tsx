@@ -303,6 +303,12 @@ export default async function HolidaySignupsPage({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-2">
+                      <Link
+                        href={`/admin/holidays/${holiday.id}/signups/${s.id}/edit`}
+                        className="text-xs font-medium text-ink hover:underline"
+                      >
+                        Edit
+                      </Link>
                       {paymentLink && <CopyLinkButton link={paymentLink} />}
                       {bill.status === "PENDING" && (
                         <form action={markSignupPaidAction} className="flex items-center gap-1">

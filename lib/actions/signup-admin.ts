@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { computeTotalAgorot } from "@/lib/holidays";
 
 async function revalidateForBill(billId: string) {
   const lineItems = await prisma.signup.findMany({
@@ -47,6 +48,85 @@ export async function reopenSignupAction(formData: FormData) {
   const billId = String(formData.get("billId") ?? "");
   await prisma.bill.update({ where: { id: billId }, data: { status: "PENDING" } });
   await revalidateForBill(billId);
+}
+
+export type UpdateSignupInput = {
+  signupId: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  isMember: boolean;
+  notes?: string;
+  menSeats: number;
+  womenSeats: number;
+};
+
+export type UpdateSignupResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Corrects an existing submission after the fact (typo in a name, wrong seat
+ * count, etc.) - never deletes or recreates anything, only updates the Bill and
+ * its Signup line item(s) in place via one atomic transaction. Membership status
+ * is shared across a whole Bill (all of a family's holidays in one payment), so
+ * changing it here recomputes every one of that bill's line items, not just the
+ * one being edited, to keep Bill.totalAgorot consistent with its line items.
+ */
+export async function updateSignup(input: UpdateSignupInput): Promise<UpdateSignupResult> {
+  const fullName = input.fullName.trim();
+  const phone = input.phone.trim();
+  if (!fullName || !phone) return { ok: false, error: "Name and phone are required." };
+
+  const menSeats = Math.max(0, Math.floor(Number(input.menSeats)) || 0);
+  const womenSeats = Math.max(0, Math.floor(Number(input.womenSeats)) || 0);
+  if (menSeats + womenSeats < 1) return { ok: false, error: "At least one seat is required." };
+
+  const signup = await prisma.signup.findUnique({
+    where: { id: input.signupId },
+    include: {
+      holiday: true,
+      bill: { include: { lineItems: { where: { deletedAt: null }, include: { holiday: true } } } },
+    },
+  });
+  if (!signup || signup.deletedAt) return { ok: false, error: "This signup could not be found." };
+
+  const bill = signup.bill;
+  const otherLineItems = bill.lineItems.filter((li) => li.id !== signup.id);
+
+  const updatedTotal = computeTotalAgorot(signup.holiday, input.isMember, menSeats, womenSeats);
+  const otherTotals = otherLineItems.map((li) => ({
+    id: li.id,
+    totalAgorot: computeTotalAgorot(li.holiday, input.isMember, li.menSeats, li.womenSeats),
+  }));
+  const newBillTotal = updatedTotal + otherTotals.reduce((sum, li) => sum + li.totalAgorot, 0);
+
+  await prisma.$transaction([
+    prisma.bill.update({
+      where: { id: bill.id },
+      data: {
+        fullName,
+        phone,
+        email: input.email?.trim() || null,
+        isMember: input.isMember,
+        notes: input.notes?.trim() || null,
+        totalAgorot: newBillTotal,
+      },
+    }),
+    prisma.signup.update({
+      where: { id: signup.id },
+      data: { menSeats, womenSeats, totalAgorot: updatedTotal },
+    }),
+    ...otherTotals.map((li) =>
+      prisma.signup.update({ where: { id: li.id }, data: { totalAgorot: li.totalAgorot } })
+    ),
+  ]);
+
+  for (const li of bill.lineItems) {
+    revalidatePath(`/admin/holidays/${li.holidayId}/signups`);
+    revalidatePath(`/admin/holidays/${li.holidayId}`);
+  }
+  revalidatePath("/admin");
+
+  return { ok: true };
 }
 
 /**

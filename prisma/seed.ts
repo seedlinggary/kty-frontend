@@ -17,10 +17,13 @@ async function main() {
     const passwordHash = await bcrypt.hash(adminPassword, 12);
     await prisma.admin.upsert({
       where: { email: adminEmail.toLowerCase() },
-      update: {},
-      create: { email: adminEmail.toLowerCase(), passwordHash, name: adminName },
+      // Only one admin exists at seed time, so promote it to SUPERADMIN so the
+      // override/payment-link-creation capability is usable out of the box.
+      // Doesn't touch the password of an admin that already exists.
+      update: { role: "SUPERADMIN" },
+      create: { email: adminEmail.toLowerCase(), passwordHash, name: adminName, role: "SUPERADMIN" },
     });
-    console.log(`Admin ready: ${adminEmail}`);
+    console.log(`Admin ready (SUPERADMIN): ${adminEmail}`);
   } else {
     console.warn("ADMIN_EMAIL / ADMIN_PASSWORD not set - skipping admin creation.");
   }

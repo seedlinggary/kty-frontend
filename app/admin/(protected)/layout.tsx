@@ -6,7 +6,13 @@ import logoIcon from "@/public/logo-icon.png";
 
 const navLinks = [
   { href: "/admin", label: "Dashboard" },
+  { href: "/admin/search", label: "Search" },
   { href: "/admin/holidays", label: "Holidays" },
+  { href: "/admin/donations", label: "Donations" },
+  { href: "/admin/memberships", label: "Memberships" },
+  { href: "/admin/payment-links", label: "Payment Links" },
+  { href: "/admin/payment-follow-ups", label: "Follow-Ups" },
+  { href: "/admin/other-transactions", label: "Other Transactions" },
   { href: "/admin/forms", label: "Forms" },
   { href: "/admin/settings", label: "Site Settings" },
 ];

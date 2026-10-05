@@ -12,12 +12,21 @@ datasource db {
   provider = "postgresql"
 }
 
+enum AdminRole {
+  ADMIN
+  SUPERADMIN
+}
+
 model Admin {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   name         String
-  createdAt    DateTime @default(now())
+  /// SUPERADMIN can overwrite payment records (amount/status/contact info) directly
+  /// from the admin UI; plain ADMIN can view, send follow-up emails, and the normal
+  /// mark-paid/cancel actions, but not freehand-edit a payment's recorded details.
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now())
 }
 
 model Holiday {
@@ -58,6 +67,7 @@ model Bill {
   updatedAt     DateTime      @updatedAt
   lineItems     Signup[]
   transactions  Transaction[]
+  followUps     PaymentFollowUp[]
 
   @@index([status])
 }
@@ -83,18 +93,220 @@ model Signup {
   @@index([deletedAt])
 }
 
+/// One successful NedarimPlus charge, against exactly one of Bill / Donation /
+/// Membership / PaymentLink (whichever the webhook's Avour/Comments prefix
+/// resolved to). A Membership can accumulate many of these over time (one per
+/// monthly Keva charge); the others normally get just one.
 model Transaction {
-  id                    String   @id @default(cuid())
-  bill                  Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
-  billId                String
+  id                    String       @id @default(cuid())
+  bill                  Bill?        @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId                String?
+  donation              Donation?    @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  donationId            String?
+  membership            Membership?  @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  membershipId          String?
+  paymentLink           PaymentLink? @relation(fields: [paymentLinkId], references: [id], onDelete: Cascade)
+  paymentLinkId         String?
   nedarimTransactionId  String?
   confirmation          String?
   amountAgorot          Int
-  source                String   @default("webhook")
+  source                String       @default("webhook")
+  rawPayload            Json?
+  receivedAt            DateTime     @default(now())
+
+  @@index([billId])
+  @@index([donationId])
+  @@index([membershipId])
+  @@index([paymentLinkId])
+  @@index([nedarimTransactionId])
+}
+
+/// A one-time donation of any amount, paid via a NedarimPlus direct link (same
+/// "locked amount, redirect, webhook" pattern as Bill).
+model Donation {
+  id            String            @id @default(cuid())
+  referenceCode String            @unique
+  fullName      String
+  /// Mandatory - the one reliable way to reach a donor if their payment fails.
+  email         String
+  /// Not required, but always asked for - collected whenever given.
+  phone         String?
+  address       String?
+  city          String?
+  amountAgorot  Int
+  purpose       String?
+  status        BillStatus        @default(PENDING)
+  createdBy     String            @default("public")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  transactions  Transaction[]
+  followUps     PaymentFollowUp[]
+
+  @@index([status])
+}
+
+enum MembershipTier {
+  ASSOCIATE
+  FULL
+}
+
+enum MembershipStatus {
+  /// Signed up, but NedarimPlus's standing-order ("Keva") setup webhook hasn't
+  /// arrived yet to confirm it's actually established.
+  PENDING
+  /// Keva established and charging normally.
+  ACTIVE
+  /// An expected monthly charge didn't arrive within the grace window.
+  PAST_DUE
+  CANCELLED
+}
+
+/// A recurring monthly membership due, charged via NedarimPlus's standing-order
+/// ("Keva") mechanism rather than a single payment.
+model Membership {
+  id             String             @id @default(cuid())
+  referenceCode  String             @unique
+  fullName       String
+  /// Mandatory - the one reliable way to reach a member if a charge fails.
+  email          String
+  /// Not required, but always asked for - collected whenever given.
+  phone          String?
+  address        String?
+  city           String?
+  tier           MembershipTier
+  /// Snapshot of the monthly amount at signup, so a later price change doesn't
+  /// rewrite history for members who already signed up at the old rate.
+  monthlyAgorot  Int
+  /// Set once NedarimPlus's Keva-setup webhook confirms the standing order.
+  kevaId         String?            @unique
+  status         MembershipStatus   @default(PENDING)
+  nextChargeDate DateTime?
+  lastChargeAt   DateTime?
+  createdBy      String             @default("public")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  transactions   Transaction[]
+  followUps      PaymentFollowUp[]
+
+  @@index([status])
+}
+
+/// An admin-generated payment link for a predetermined, fixed amount - e.g. a
+/// pledge, an event fee, or correcting an underpayment - so someone can just
+/// pay that exact amount without filling out a public form themselves.
+model PaymentLink {
+  id            String            @id @default(cuid())
+  referenceCode String            @unique
+  label         String
+  fullName      String?
+  phone         String?
+  email         String?
+  amountAgorot  Int
+  status        BillStatus        @default(PENDING)
+  createdBy     String            @default("admin")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  transactions  Transaction[]
+  followUps     PaymentFollowUp[]
+
+  @@index([status])
+}
+
+enum FollowUpReason {
+  /// Auto-detected: stayed PENDING past the grace window with no success webhook.
+  /// NedarimPlus never tells us about a decline directly, so this is the best
+  /// available signal that a payment attempt may have failed.
+  STALE_PENDING
+  /// Staff learned about a failure some other way (e.g. a forwarded NedarimPlus
+  /// decline email) and flagged it by hand, often before the grace window above
+  /// would have caught it.
+  MANUAL
+  /// Parsed automatically from a NedarimPlus "payment failed" notification email.
+  FAILURE_EMAIL
+  /// Detected automatically via NedarimPlus's standing-order reporting API
+  /// (GetKevaJson's ErrorText) - memberships only, no email involved at all.
+  API_DECLINE
+}
+
+enum FollowUpStatus {
+  OPEN
+  EMAIL_SENT
+  RESOLVED
+  DISMISSED
+}
+
+/// Tracks a payment that may need staff follow-up. Usually tied to exactly
+/// one of Bill / Donation / Membership / PaymentLink. Resolved automatically
+/// the moment a later successful Transaction comes in for that same record
+/// (i.e. they retried and it went through) - staff don't have to notice that
+/// by hand.
+///
+/// A FAILURE_EMAIL-sourced follow-up may instead be "standalone" - no FK set
+/// at all - when NedarimPlus's decline email is for a standing order or link
+/// our system never created (e.g. one set up directly in NedarimPlus before
+/// this system existed). The external* fields carry everything needed to
+/// still email that person, straight from the parsed decline notification.
+model PaymentFollowUp {
+  id                   String         @id @default(cuid())
+  bill                 Bill?          @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId               String?
+  donation             Donation?      @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  donationId           String?
+  membership           Membership?    @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  membershipId         String?
+  paymentLink          PaymentLink?   @relation(fields: [paymentLinkId], references: [id], onDelete: Cascade)
+  paymentLinkId        String?
+  reason               FollowUpReason
+  status               FollowUpStatus @default(OPEN)
+  notes                String?
+  emailsSentCount      Int            @default(0)
+  lastEmailSentAt      DateTime?
+  resolvedAt           DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  /// Set only when this follow-up isn't tied to any of the FKs above (a
+  /// decline on something our system never created).
+  externalFullName     String?
+  externalPhone        String?
+  externalEmail        String?
+  externalAmountAgorot Int?
+  externalCategory     String?
+  externalKevaId       String?
+
+  /// Diagnostic detail from a parsed NedarimPlus decline email - kept
+  /// regardless of whether this follow-up matched a known record.
+  failureReason        String?
+  cardLast4            String?
+
+  @@index([billId])
+  @@index([donationId])
+  @@index([membershipId])
+  @@index([paymentLinkId])
+  @@index([status])
+}
+
+/// A successful NedarimPlus transaction whose Avour/Comments (and KevaId, for
+/// standing orders) didn't match anything our own system generated - e.g. a
+/// pre-existing standing order set up directly in NedarimPlus's dashboard, or
+/// any other payment link shared outside this app. Kept so staff have a
+/// complete picture of everything coming through the Mosad, not just what our
+/// own forms initiated. Never auto-deleted; purely a record-keeping ledger.
+model ExternalTransaction {
+  id                    String   @id @default(cuid())
+  nedarimTransactionId  String?  @unique
+  amountAgorot          Int
+  clientName            String?
+  phone                 String?
+  email                 String?
+  groupe                String?
+  comments              String?
+  confirmation          String?
+  kevaId                String?
   rawPayload            Json?
   receivedAt            DateTime @default(now())
 
-  @@index([billId])
+  @@index([receivedAt])
 }
 
 enum FormFieldType {
