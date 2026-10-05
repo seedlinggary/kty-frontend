@@ -3,10 +3,12 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
-import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
 import { markDonationPaidAction, cancelDonationAction } from "@/lib/actions/payment-admin";
 import { flagForFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import type { BillStatus, Prisma } from "@/lib/generated/prisma/client";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
+import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
+import { groupByPerson } from "@/lib/people-grouping";
 
 export const metadata: Metadata = { title: "Donations" };
 
@@ -16,16 +18,36 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-500",
 };
 
+type DonationRow = Prisma.DonationGetPayload<{ include: { person: { select: { id: true; fullName: true } } } }>;
+
+function TableHead() {
+  return (
+    <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+      <tr>
+        <th className="px-4 py-3" />
+        <th className="px-4 py-3">Name</th>
+        <th className="px-4 py-3">Contact</th>
+        <th className="px-4 py-3">Purpose</th>
+        <th className="px-4 py-3">Amount</th>
+        <th className="px-4 py-3">Status</th>
+        <th className="px-4 py-3">Reference</th>
+        <th className="px-4 py-3">Actions</th>
+      </tr>
+    </thead>
+  );
+}
+
 export default async function DonationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
   const statusFilter = sp.status ?? "ALL";
+  const grouped = sp.view !== "raw";
 
   const where: Prisma.DonationWhereInput = {};
   if (statusFilter !== "ALL") where.status = statusFilter as BillStatus;
@@ -39,8 +61,83 @@ export default async function DonationsPage({
     ];
   }
 
-  const donations = await prisma.donation.findMany({ where, orderBy: { createdAt: "desc" } });
+  const donations = await prisma.donation.findMany({
+    where,
+    include: { person: { select: { id: true, fullName: true } } },
+    orderBy: { createdAt: "desc" },
+  });
   const totalPaid = donations.filter((d) => d.status === "PAID").reduce((sum, d) => sum + d.amountAgorot, 0);
+
+  const redirectParams = new URLSearchParams();
+  if (q) redirectParams.set("q", q);
+  if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
+  const redirectQs = redirectParams.toString();
+  const redirectTo = `/admin/donations${redirectQs ? `?${redirectQs}` : ""}`;
+
+  const { groups, ungrouped } = groupByPerson(donations, (d) => d.person);
+
+  function Row({ d }: { d: DonationRow }) {
+    return (
+      <tr key={d.id} className="border-t border-line align-top">
+        <td className="px-4 py-3">
+          <MergeCheckbox kind="donation" id={d.id} />
+        </td>
+        <td className="px-4 py-3 font-medium text-ink">
+          {d.fullName}
+          <div>
+            <PersonBadge person={d.person} />
+          </div>
+        </td>
+        <td className="px-4 py-3 text-ink/70">
+          <p>{d.email}</p>
+          {d.phone && <p className="text-xs text-ink/50">{d.phone}</p>}
+          {(d.address || d.city) && (
+            <p className="text-xs text-ink/50">{[d.address, d.city].filter(Boolean).join(", ")}</p>
+          )}
+        </td>
+        <td className="px-4 py-3 text-ink/70">{d.purpose || "—"}</td>
+        <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(d.amountAgorot)}</td>
+        <td className="px-4 py-3">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[d.status]}`}>{d.status}</span>
+        </td>
+        <td className="px-4 py-3 font-mono text-xs text-ink/60">DON-{d.referenceCode}</td>
+        <td className="px-4 py-3">
+          <div className="flex flex-col gap-2">
+            {d.status === "PENDING" && (
+              <form action={markDonationPaidAction}>
+                <input type="hidden" name="id" value={d.id} />
+                <button type="submit" className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800">
+                  Mark Paid
+                </button>
+              </form>
+            )}
+            {d.status !== "CANCELLED" && (
+              <form action={cancelDonationAction}>
+                <input type="hidden" name="id" value={d.id} />
+                <button type="submit" className="text-xs font-medium text-red-600 hover:underline">
+                  Cancel
+                </button>
+              </form>
+            )}
+            {d.status === "PENDING" && (
+              <form action={flagForFollowUpAction}>
+                <input type="hidden" name="kind" value="donation" />
+                <input type="hidden" name="id" value={d.id} />
+                <button type="submit" className="text-xs font-medium text-amber-700 hover:underline">
+                  Flag Failed
+                </button>
+              </form>
+            )}
+            {isSuperAdmin && (
+              <Link href={`/admin/donations/${d.id}/edit`} className="text-xs font-medium text-ink hover:underline">
+                Edit (Override)
+              </Link>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div>
@@ -51,6 +148,7 @@ export default async function DonationsPage({
             {donations.length} shown · {formatAgorotAsILS(totalPaid)} received
           </p>
         </div>
+        <GroupByPersonToggle />
       </div>
 
       <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-4">
@@ -78,83 +176,60 @@ export default async function DonationsPage({
         </button>
       </form>
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-            <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Purpose</th>
-              <th className="px-4 py-3">Amount</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Reference</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {donations.map((d) => (
-              <tr key={d.id} className="border-t border-line align-top">
-                <td className="px-4 py-3 font-medium text-ink">{d.fullName}</td>
-                <td className="px-4 py-3 text-ink/70">
-                  <p>{d.email}</p>
-                  {d.phone && <p className="text-xs text-ink/50">{d.phone}</p>}
-                  {(d.address || d.city) && (
-                    <p className="text-xs text-ink/50">{[d.address, d.city].filter(Boolean).join(", ")}</p>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-ink/70">{d.purpose || "—"}</td>
-                <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(d.amountAgorot)}</td>
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[d.status]}`}>{d.status}</span>
-                </td>
-                <td className="px-4 py-3 font-mono text-xs text-ink/60">DON-{d.referenceCode}</td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-col gap-2">
-                    {d.status === "PENDING" && (
-                      <form action={markDonationPaidAction}>
-                        <input type="hidden" name="id" value={d.id} />
-                        <button type="submit" className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800">
-                          Mark Paid
-                        </button>
-                      </form>
-                    )}
-                    {d.status !== "CANCELLED" && (
-                      <form action={cancelDonationAction}>
-                        <input type="hidden" name="id" value={d.id} />
-                        <button type="submit" className="text-xs font-medium text-red-600 hover:underline">
-                          Cancel
-                        </button>
-                      </form>
-                    )}
-                    {d.status === "PENDING" && (
-                      <form action={flagForFollowUpAction}>
-                        <input type="hidden" name="kind" value="donation" />
-                        <input type="hidden" name="id" value={d.id} />
-                        <ConfirmSubmitButton
-                          confirmMessage="Flag this donation for payment follow-up?"
-                          className="text-xs font-medium text-amber-700 hover:underline"
-                        >
-                          Flag Failed
-                        </ConfirmSubmitButton>
-                      </form>
-                    )}
-                    {isSuperAdmin && (
-                      <Link href={`/admin/donations/${d.id}/edit`} className="text-xs font-medium text-ink hover:underline">
-                        Edit (Override)
-                      </Link>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {donations.length === 0 && (
+      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
+
+      {donations.length === 0 ? (
+        <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
+          <table className="w-full text-left text-sm">
+            <TableHead />
+            <tbody>
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-ink/50">No donations yet.</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-ink/50">No donations yet.</td>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <>
+          <MergeForm redirectTo={redirectTo} />
+          {grouped ? (
+            <div className="mt-4 space-y-6">
+              {groups.map(({ person, items }) => (
+                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
+                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
+                      {person.fullName}
+                    </Link>
+                    <span className="text-xs text-ink/60">{items.length} donation{items.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    <TableHead />
+                    <tbody>{items.map((d) => <Row key={d.id} d={d} />)}</tbody>
+                  </table>
+                </div>
+              ))}
+              {ungrouped.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
+                    <table className="w-full text-left text-sm">
+                      <TableHead />
+                      <tbody>{ungrouped.map((d) => <Row key={d.id} d={d} />)}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-white">
+              <table className="w-full text-left text-sm">
+                <TableHead />
+                <tbody>{donations.map((d) => <Row key={d.id} d={d} />)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

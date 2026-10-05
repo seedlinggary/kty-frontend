@@ -7,6 +7,7 @@ import logoIcon from "@/public/logo-icon.png";
 const navLinks = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/search", label: "Search" },
+  { href: "/admin/people", label: "People" },
   { href: "/admin/holidays", label: "Holidays" },
   { href: "/admin/donations", label: "Donations" },
   { href: "/admin/memberships", label: "Memberships" },

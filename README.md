@@ -83,6 +83,41 @@ the admin signup list (there's a field for the confirmation number).
   history inline), payment links, other NedarimPlus transactions, untracked
   payment issues, and every congregant form submission, so staff can pull up
   everything about one person without checking each admin page separately.
+  NedarimPlus never de-duplicates - the same real person signing up again
+  becomes a brand-new unrelated record every time - so Search also lets staff
+  check the rows that are the same person (across holiday seats, donations,
+  memberships, payment links, and form submissions) and "Combine Checked Rows
+  Into One Person." That creates (or reuses) a **Person** - see
+  `/admin/people` - showing their whole combined history in one place.
+  Nothing is ever deleted by this: a "Remove from person" link on the Person
+  page undoes it per record, and the underlying record itself is untouched
+  either way, including right back in NedarimPlus. A form submission has no
+  fixed name/email columns (its answers are a dynamic JSON blob), so merging
+  one in makes a best-effort guess at a name/email/phone by matching the
+  form's own field labels - good enough to seed a new Person, though in
+  practice a submission is usually merged alongside a donation/membership/
+  signup that already has real contact fields.
+- **The same checking-and-combining works right on every list page it
+  applies to** - Donations, Memberships, Holiday Signups, Payment Links,
+  Other NedarimPlus Transactions, and each Form's Responses - not just
+  centrally on Search. A name spelled differently across languages, or a
+  different email on a second attempt, can be obvious at a glance on the
+  list you're already looking at even when neither value alone would turn up
+  as a text-search match. Each of those pages also has a "Group by person"
+  checkbox, checked by default, that clusters every row already linked to
+  the same Person together (with whatever's still unlinked kept visible
+  underneath, never hidden) - uncheck it to go back to the plain,
+  unclustered table.
+- **Possible Duplicates** (on `/admin/people`): staff don't have to spot
+  matches by eye at all - this section scans every donation, membership,
+  holiday seat, payment link, other transaction, and form submission for
+  ones sharing the same email or phone number (normalized - case/whitespace
+  for email, digits-only for phone) that aren't combined onto the same
+  Person yet, and recommends combining them, with one button that runs the
+  same non-destructive combine used everywhere else. It's a recommendation,
+  not an automatic change - nothing merges until staff click it, and an
+  oddly large match (e.g. a shared office email on many unrelated records)
+  is left out rather than shown as a wall of false positives.
 - **Holidays** (`/admin/holidays`): create a new holiday any time — Sukkos,
   Pesach, next year's Yomim Noraim, etc. Each holiday has its own member/
   non-member seat price and an open/closed toggle. Creating one immediately
@@ -103,6 +138,39 @@ the admin signup list (there's a field for the confirmation number).
   History" on each row opens a full detail page with every charge NedarimPlus
   has reported for that member (date, amount, confirmation), plus any
   flagged payment issues for them.
+- **Import from NedarimPlus** (on `/admin/memberships`, super admin only,
+  needs `NEDARIM_APIPASSWORD` - same requirement as the automatic
+  membership-decline check below): pulls in every standing order NedarimPlus
+  already has on file - including ones set up directly on their own site
+  before this system existed - and creates a Membership here for any one we
+  don't already have (matched by NedarimPlus's own KevaId), along with its
+  real signup date and its full past payment history (each past charge
+  becomes a normal Transaction, matched by NedarimPlus's own transaction ID
+  so nothing is ever duplicated). Safe to run again any time, including
+  just to re-sync: anything already on file - a membership, a past payment -
+  is matched and skipped, never duplicated, and a membership's status/tier/
+  amount are never silently overwritten by a re-sync (only its signup date,
+  since that has no admin-editable UI anywhere to begin with). Strictly
+  read-only against NedarimPlus - it only calls their GetKevaJson/GetKevaId
+  reports; nothing is ever written back or changed on their side.
+  NedarimPlus also reports, per standing order, how many payments have been
+  made and (per their own count) how many remain - shown on the membership's
+  detail page as "Payment Term" when NedarimPlus reports one; a blank/zero
+  remaining commonly means no fixed end, though it's worth checking
+  NedarimPlus's own dashboard directly for a specific order if a number
+  looks off, since their docs don't spell out every edge case.
+  "Past Due" can come from either this import/re-sync noticing NedarimPlus
+  reported a decline on the last charge attempt, or from the system's own
+  daily check (see Payment Follow-Ups below) noticing an expected charge
+  simply never arrived - whichever notices first.
+  NedarimPlus's date fields have turned up in more than one shape in
+  practice (plain DD/MM/YYYY, a classic ASP.NET date wrapper, raw epoch
+  numbers) - import/re-sync tries each in turn and logs anything it still
+  can't recognize, rather than silently defaulting to "now." Every date
+  shown anywhere in `/admin` spells the month out (e.g. "8 Jan 2027") rather
+  than a bare numeric date, specifically to avoid the day/month ambiguity
+  that caused a real bug here (a slash-separated date reads as day-month to
+  some people and month-day to others).
 - Both forms require an email (the one reliable way to reach someone about a
   failed payment) and collect phone/address/city without requiring them -
   worded as plain fields rather than "(optional)," since the goal is still to

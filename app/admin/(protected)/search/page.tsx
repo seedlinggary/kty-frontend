@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { searchEverything } from "@/lib/global-search";
 import { formatAgorotAsILS } from "@/lib/money";
+import { mergeIntoPersonAction } from "@/lib/actions/people";
+import { PersonBadge, MergeErrorBanner } from "@/components/admin/person-merge-ui";
 
 export const metadata: Metadata = { title: "Search" };
 
@@ -16,11 +18,12 @@ function SectionHeading({ children, count }: { children: React.ReactNode; count:
 export default async function AdminSearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; mergeError?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
   const results = q ? await searchEverything(q) : null;
+  const redirectTo = `/admin/search${q ? `?q=${encodeURIComponent(q)}` : ""}`;
 
   const totalResults = results
     ? results.bills.length +
@@ -57,11 +60,27 @@ export default async function AdminSearchPage({
 
       {!q && <p className="mt-10 text-ink/50">Enter a search above to get started.</p>}
 
+      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
+
       {q && results && (
         <>
           <p className="mt-6 text-sm text-ink/60">
             {totalResults} result{totalResults === 1 ? "" : "s"} for &quot;{q}&quot;
           </p>
+
+          <form action={mergeIntoPersonAction}>
+            <input type="hidden" name="redirectTo" value={redirectTo} />
+            <p className="mt-2 text-xs text-ink/50">
+              Check the rows below that are the same real person - even if the name is spelled
+              differently or a different email was used (across Holiday Seats, Donations,
+              Memberships, Payment Links, and Form Submissions) - then combine them into one.
+            </p>
+            <button
+              type="submit"
+              className="mt-2 rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
+            >
+              Combine Checked Rows Into One Person
+            </button>
 
           {results.bills.length > 0 && (
             <>
@@ -70,6 +89,7 @@ export default async function AdminSearchPage({
                 <table className="w-full text-left text-sm">
                   <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
                     <tr>
+                      <th className="px-4 py-3" />
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Contact</th>
                       <th className="px-4 py-3">Holidays</th>
@@ -81,7 +101,13 @@ export default async function AdminSearchPage({
                   <tbody>
                     {results.bills.map((b) => (
                       <tr key={b.id} className="border-t border-line align-top">
-                        <td className="px-4 py-3 font-medium text-ink">{b.fullName}</td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" name="items" value={`bill:${b.id}`} className="h-4 w-4 rounded border-line" />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-ink">
+                          {b.fullName}
+                          <div><PersonBadge person={b.person} /></div>
+                        </td>
                         <td className="px-4 py-3 text-ink/70">
                           <p>{b.phone}</p>
                           {b.email && <p className="text-xs text-ink/50">{b.email}</p>}
@@ -111,6 +137,7 @@ export default async function AdminSearchPage({
                 <table className="w-full text-left text-sm">
                   <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
                     <tr>
+                      <th className="px-4 py-3" />
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Contact</th>
                       <th className="px-4 py-3">Purpose</th>
@@ -122,7 +149,13 @@ export default async function AdminSearchPage({
                   <tbody>
                     {results.donations.map((d) => (
                       <tr key={d.id} className="border-t border-line align-top">
-                        <td className="px-4 py-3 font-medium text-ink">{d.fullName}</td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" name="items" value={`donation:${d.id}`} className="h-4 w-4 rounded border-line" />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-ink">
+                          {d.fullName}
+                          <div><PersonBadge person={d.person} /></div>
+                        </td>
                         <td className="px-4 py-3 text-ink/70">
                           <p>{d.email}</p>
                           {d.phone && <p className="text-xs text-ink/50">{d.phone}</p>}
@@ -148,12 +181,16 @@ export default async function AdminSearchPage({
               {results.memberships.map((m) => (
                 <div key={m.id} className="mt-3 overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <div>
-                      <p className="font-medium text-ink">{m.fullName}</p>
-                      <p className="text-xs text-ink/60">
-                        {m.email} {m.phone && `· ${m.phone}`} · {m.tier === "FULL" ? "Full" : "Associate"} ·{" "}
-                        {formatAgorotAsILS(m.monthlyAgorot)}/mo · {m.status.replace("_", " ")}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <input type="checkbox" name="items" value={`membership:${m.id}`} className="mt-1 h-4 w-4 rounded border-line" />
+                      <div>
+                        <p className="font-medium text-ink">{m.fullName}</p>
+                        <p className="text-xs text-ink/60">
+                          {m.email} {m.phone && `· ${m.phone}`} · {m.tier === "FULL" ? "Full" : "Associate"} ·{" "}
+                          {formatAgorotAsILS(m.monthlyAgorot)}/mo · {m.status.replace("_", " ")}
+                        </p>
+                        <PersonBadge person={m.person} />
+                      </div>
                     </div>
                     <Link href={`/admin/memberships/${m.id}`} className="text-xs font-medium text-ink hover:underline">
                       Full Payment History →
@@ -194,6 +231,7 @@ export default async function AdminSearchPage({
                 <table className="w-full text-left text-sm">
                   <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
                     <tr>
+                      <th className="px-4 py-3" />
                       <th className="px-4 py-3">Label</th>
                       <th className="px-4 py-3">Contact</th>
                       <th className="px-4 py-3">Amount</th>
@@ -203,7 +241,13 @@ export default async function AdminSearchPage({
                   <tbody>
                     {results.paymentLinks.map((l) => (
                       <tr key={l.id} className="border-t border-line align-top">
-                        <td className="px-4 py-3 font-medium text-ink">{l.label}</td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" name="items" value={`paymentLink:${l.id}`} className="h-4 w-4 rounded border-line" />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-ink">
+                          {l.label}
+                          <div><PersonBadge person={l.person} /></div>
+                        </td>
                         <td className="px-4 py-3 text-ink/70">
                           {l.fullName && <p>{l.fullName}</p>}
                           {l.email && <p className="text-xs text-ink/50">{l.email}</p>}
@@ -221,6 +265,43 @@ export default async function AdminSearchPage({
             </>
           )}
 
+          {results.formResponses.length > 0 && (
+            <>
+              <SectionHeading count={results.formResponses.length}>Form Submissions</SectionHeading>
+              <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+                    <tr>
+                      <th className="px-4 py-3" />
+                      <th className="px-4 py-3">Form</th>
+                      <th className="px-4 py-3">Submitted</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.formResponses.map((r) => (
+                      <tr key={r.id} className="border-t border-line align-top">
+                        <td className="px-4 py-3">
+                          <input type="checkbox" name="items" value={`formResponse:${r.id}`} className="h-4 w-4 rounded border-line" />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-ink">
+                          {r.title}
+                          <div><PersonBadge person={r.person} /></div>
+                        </td>
+                        <td className="px-4 py-3 text-ink/70">{new Date(r.createdAt).toLocaleString()}</td>
+                        <td className="px-4 py-3">
+                          <Link href={`/admin/forms/${r.formId}/responses/${r.id}/edit`} className="text-xs font-medium text-ink hover:underline">
+                            View / Edit
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
           {results.externalTransactions.length > 0 && (
             <>
               <SectionHeading count={results.externalTransactions.length}>Other NedarimPlus Transactions</SectionHeading>
@@ -228,6 +309,7 @@ export default async function AdminSearchPage({
                 <table className="w-full text-left text-sm">
                   <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
                     <tr>
+                      <th className="px-4 py-3" />
                       <th className="px-4 py-3">Date</th>
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Amount</th>
@@ -237,8 +319,14 @@ export default async function AdminSearchPage({
                   <tbody>
                     {results.externalTransactions.map((t) => (
                       <tr key={t.id} className="border-t border-line align-top">
+                        <td className="px-4 py-3">
+                          <input type="checkbox" name="items" value={`externalTransaction:${t.id}`} className="h-4 w-4 rounded border-line" />
+                        </td>
                         <td className="px-4 py-3 text-ink/70">{t.receivedAt.toLocaleDateString()}</td>
-                        <td className="px-4 py-3 font-medium text-ink">{t.clientName || "—"}</td>
+                        <td className="px-4 py-3 font-medium text-ink">
+                          {t.clientName || "—"}
+                          <div><PersonBadge person={t.person} /></div>
+                        </td>
                         <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(t.amountAgorot)}</td>
                         <td className="px-4 py-3 text-ink/70">{t.groupe || "—"}</td>
                       </tr>
@@ -251,6 +339,14 @@ export default async function AdminSearchPage({
               </Link>
             </>
           )}
+
+          <button
+            type="submit"
+            className="mt-4 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
+          >
+            Combine Checked Rows Into One Person
+          </button>
+          </form>
 
           {results.untrackedFollowUps.length > 0 && (
             <>
@@ -285,36 +381,6 @@ export default async function AdminSearchPage({
               <Link href="/admin/payment-follow-ups" className="mt-2 inline-block text-xs font-medium text-accent hover:underline">
                 Manage all follow-ups →
               </Link>
-            </>
-          )}
-
-          {results.formResponses.length > 0 && (
-            <>
-              <SectionHeading count={results.formResponses.length}>Form Submissions</SectionHeading>
-              <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-                    <tr>
-                      <th className="px-4 py-3">Form</th>
-                      <th className="px-4 py-3">Submitted</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.formResponses.map((r) => (
-                      <tr key={r.id} className="border-t border-line align-top">
-                        <td className="px-4 py-3 font-medium text-ink">{r.title}</td>
-                        <td className="px-4 py-3 text-ink/70">{new Date(r.createdAt).toLocaleString()}</td>
-                        <td className="px-4 py-3">
-                          <Link href={`/admin/forms/${r.formId}/responses/${r.id}/edit`} className="text-xs font-medium text-ink hover:underline">
-                            View / Edit
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </>
           )}
 

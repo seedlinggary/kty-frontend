@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
+import { formatAdminDate, formatAdminDateTime } from "@/lib/admin-dates";
 
 export const metadata: Metadata = { title: "Membership Payment History" };
 
@@ -82,7 +83,7 @@ export default async function MembershipHistoryPage({ params }: { params: Promis
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-ink/50">Next Charge</p>
-          <p className="mt-1 text-ink">{membership.nextChargeDate ? membership.nextChargeDate.toLocaleDateString() : "—"}</p>
+          <p className="mt-1 text-ink">{membership.nextChargeDate ? formatAdminDate(membership.nextChargeDate) : "—"}</p>
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-ink/50">Standing Order ID</p>
@@ -90,9 +91,27 @@ export default async function MembershipHistoryPage({ params }: { params: Promis
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-ink/50">Member Since</p>
-          <p className="mt-1 text-ink">{membership.createdAt.toLocaleDateString()}</p>
+          <p className="mt-1 text-ink">{formatAdminDate(membership.createdAt)}</p>
         </div>
+        {(membership.nedarimPaymentsMade != null || membership.nedarimPaymentsRemaining != null) && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-ink/50">Payment Term (per NedarimPlus)</p>
+            <p className="mt-1 text-ink">
+              {membership.nedarimPaymentsMade ?? 0} made
+              {membership.nedarimPaymentsRemaining ? `, ${membership.nedarimPaymentsRemaining} remaining` : " · no fixed end reported"}
+            </p>
+          </div>
+        )}
       </div>
+
+      {membership.status === "PAST_DUE" && (
+        <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">
+          Past Due means either NedarimPlus reported a decline on this standing order&apos;s last
+          charge attempt, or an expected charge simply never arrived by its next-charge date (our
+          own daily check, since NedarimPlus doesn&apos;t always report a decline directly for
+          every case).
+        </p>
+      )}
 
       <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Payment History</h2>
       <p className="mt-1 text-sm text-ink/60">Every successful charge NedarimPlus has reported for this standing order.</p>
@@ -110,7 +129,7 @@ export default async function MembershipHistoryPage({ params }: { params: Promis
           <tbody>
             {membership.transactions.map((t) => (
               <tr key={t.id} className="border-t border-line">
-                <td className="px-4 py-3 text-ink/70">{t.receivedAt.toLocaleString()}</td>
+                <td className="px-4 py-3 text-ink/70">{formatAdminDateTime(t.receivedAt)}</td>
                 <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(t.amountAgorot)}</td>
                 <td className="px-4 py-3 font-mono text-xs text-ink/60">{t.confirmation || "—"}</td>
                 <td className="px-4 py-3 text-ink/70">{t.source}</td>
@@ -142,7 +161,7 @@ export default async function MembershipHistoryPage({ params }: { params: Promis
               <tbody>
                 {membership.followUps.map((f) => (
                   <tr key={f.id} className="border-t border-line">
-                    <td className="px-4 py-3 text-ink/70">{f.createdAt.toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-ink/70">{formatAdminDate(f.createdAt)}</td>
                     <td className="px-4 py-3 text-ink/70">{f.reason.replace("_", " ")}</td>
                     <td className="px-4 py-3 text-ink/70">{f.failureReason || f.notes || "—"}</td>
                     <td className="px-4 py-3 text-ink/70">{f.status.replace("_", " ")}</td>

@@ -6,6 +6,9 @@ import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
 import { SortHeader } from "@/components/admin/sort-header";
 import { deleteFormResponseAction } from "@/lib/actions/form-responses";
 import { formatAnswerForDisplay, answerMatchesSearch, getFieldOptions, isChoiceType } from "@/lib/forms";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
+import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
+import { groupByPerson } from "@/lib/people-grouping";
 
 export async function generateMetadata({
   params,
@@ -41,12 +44,17 @@ export default async function FormResponsesPage({
   const q = sp.q?.trim() ?? "";
   const sortKey = sp.sort ?? "date";
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
+  const grouped = sp.view !== "raw";
 
   const form = await prisma.form.findUnique({
     where: { id },
     include: {
       fields: { where: { archivedAt: null }, orderBy: { order: "asc" } },
-      responses: { where: { deletedAt: null }, orderBy: { createdAt: "desc" } },
+      responses: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        include: { person: { select: { id: true, fullName: true } } },
+      },
     },
   });
   if (!form) notFound();
@@ -93,6 +101,90 @@ export default async function FormResponsesPage({
 
   const isFiltered = Boolean(q) || activeFilters.length > 0;
 
+  const redirectParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (value && key !== "view" && key !== "mergeError") redirectParams.set(key, value);
+  }
+  const redirectQs = redirectParams.toString();
+  const redirectTo = `/admin/forms/${form.id}/responses${redirectQs ? `?${redirectQs}` : ""}`;
+
+  const { groups, ungrouped } = groupByPerson(sorted, (r) => r.person);
+
+  function TableHead() {
+    return (
+      <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+        <tr>
+          <th className="px-4 py-3" />
+          <th className="px-4 py-3">
+            <SortHeader
+              href={buildHref(form!.id, sp, { sort: "date", dir: sortKey === "date" && dir === "asc" ? "desc" : "asc" })}
+              isActive={sortKey === "date"}
+              dir={dir}
+            >
+              Submitted
+            </SortHeader>
+          </th>
+          {form!.fields.map((field) => (
+            <th key={field.id} className="px-4 py-3">
+              <SortHeader
+                href={buildHref(form!.id, sp, {
+                  sort: field.id,
+                  dir: sortKey === field.id && dir === "asc" ? "desc" : "asc",
+                })}
+                isActive={sortKey === field.id}
+                dir={dir}
+              >
+                {field.label}
+              </SortHeader>
+            </th>
+          ))}
+          <th className="px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+    );
+  }
+
+  function Row({ response }: { response: (typeof sorted)[number] }) {
+    const answers = response.answers as Record<string, unknown>;
+    return (
+      <tr key={response.id} className="border-t border-line align-top">
+        <td className="px-4 py-3">
+          <MergeCheckbox kind="formResponse" id={response.id} />
+        </td>
+        <td className="whitespace-nowrap px-4 py-3 text-xs text-ink/60">
+          {response.createdAt.toLocaleDateString()}
+          <div><PersonBadge person={response.person} /></div>
+        </td>
+        {form!.fields.map((field) => (
+          <td key={field.id} className="max-w-[16rem] px-4 py-3 text-ink/80">
+            {formatAnswerForDisplay(field.type, answers[field.id]) || (
+              <span className="text-ink/30">—</span>
+            )}
+          </td>
+        ))}
+        <td className="px-4 py-3">
+          <div className="flex flex-col gap-2">
+            <Link
+              href={`/admin/forms/${form!.id}/responses/${response.id}/edit`}
+              className="text-xs font-medium text-accent hover:underline"
+            >
+              Edit
+            </Link>
+            <form action={deleteFormResponseAction}>
+              <input type="hidden" name="responseId" value={response.id} />
+              <ConfirmSubmitButton
+                confirmMessage="Delete this response? It will be removed from totals and CSV exports."
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Delete
+              </ConfirmSubmitButton>
+            </form>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -104,7 +196,8 @@ export default async function FormResponsesPage({
             {sorted.length} shown{isFiltered ? " (filtered)" : ""}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <GroupByPersonToggle />
           <a
             href={`/admin/forms/${form.id}/responses/export`}
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -171,83 +264,62 @@ export default async function FormResponsesPage({
         )}
       </form>
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-            <tr>
-              <th className="px-4 py-3">
-                <SortHeader
-                  href={buildHref(form.id, sp, { sort: "date", dir: sortKey === "date" && dir === "asc" ? "desc" : "asc" })}
-                  isActive={sortKey === "date"}
-                  dir={dir}
-                >
-                  Submitted
-                </SortHeader>
-              </th>
-              {form.fields.map((field) => (
-                <th key={field.id} className="px-4 py-3">
-                  <SortHeader
-                    href={buildHref(form.id, sp, {
-                      sort: field.id,
-                      dir: sortKey === field.id && dir === "asc" ? "desc" : "asc",
-                    })}
-                    isActive={sortKey === field.id}
-                    dir={dir}
-                  >
-                    {field.label}
-                  </SortHeader>
-                </th>
-              ))}
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((response) => {
-              const answers = response.answers as Record<string, unknown>;
-              return (
-                <tr key={response.id} className="border-t border-line align-top">
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-ink/60">
-                    {response.createdAt.toLocaleDateString()}
-                  </td>
-                  {form.fields.map((field) => (
-                    <td key={field.id} className="max-w-[16rem] px-4 py-3 text-ink/80">
-                      {formatAnswerForDisplay(field.type, answers[field.id]) || (
-                        <span className="text-ink/30">—</span>
-                      )}
-                    </td>
-                  ))}
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      <Link
-                        href={`/admin/forms/${form.id}/responses/${response.id}/edit`}
-                        className="text-xs font-medium text-accent hover:underline"
-                      >
-                        Edit
-                      </Link>
-                      <form action={deleteFormResponseAction}>
-                        <input type="hidden" name="responseId" value={response.id} />
-                        <ConfirmSubmitButton
-                          confirmMessage="Delete this response? It will be removed from totals and CSV exports."
-                          className="text-xs font-medium text-red-600 hover:underline"
-                        >
-                          Delete
-                        </ConfirmSubmitButton>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {sorted.length === 0 && (
+      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
+
+      {sorted.length === 0 ? (
+        <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
+          <table className="w-full text-left text-sm">
+            {TableHead()}
+            <tbody>
               <tr>
-                <td colSpan={form.fields.length + 2} className="px-4 py-8 text-center text-ink/50">
+                <td colSpan={form.fields.length + 3} className="px-4 py-8 text-center text-ink/50">
                   {isFiltered ? "No responses match these filters." : "No responses yet."}
                 </td>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <>
+          <MergeForm redirectTo={redirectTo} />
+          {grouped ? (
+            <div className="mt-4 space-y-6">
+              {groups.map(({ person, items }) => (
+                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
+                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
+                      {person.fullName}
+                    </Link>
+                    <span className="text-xs text-ink/60">{items.length} response{items.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    {TableHead()}
+                    <tbody>{items.map((r) => <Row key={r.id} response={r} />)}</tbody>
+                  </table>
+                </div>
+              ))}
+              {ungrouped.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
+                    <table className="w-full text-left text-sm">
+                      {TableHead()}
+                      <tbody>{ungrouped.map((r) => <Row key={r.id} response={r} />)}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-white">
+              <table className="w-full text-left text-sm">
+                {TableHead()}
+                <tbody>{sorted.map((r) => <Row key={r.id} response={r} />)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

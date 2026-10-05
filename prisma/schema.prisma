@@ -29,6 +29,35 @@ model Admin {
   createdAt    DateTime  @default(now())
 }
 
+/// A real individual, who may have signed up / paid multiple separate times
+/// (NedarimPlus itself never de-duplicates - every signup becomes its own
+/// unrelated record there). Staff explicitly merge Bills/Donations/
+/// Memberships/PaymentLinks onto one Person from /admin/search, so the same
+/// person's whole history shows as one combined view instead of scattered
+/// unrelated entries. Nothing is ever required to have a Person - records
+/// stay fully usable unlinked, and deleting a Person only unlinks its
+/// records (never deletes them - see onDelete: SetNull below).
+model Person {
+  id        String   @id @default(cuid())
+  fullName  String
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bills                Bill[]
+  donations            Donation[]
+  memberships          Membership[]
+  paymentLinks         PaymentLink[]
+  formResponses        FormResponse[]
+  externalTransactions ExternalTransaction[]
+
+  @@index([email])
+}
+
 model Holiday {
   id                    String     @id @default(cuid())
   slug                  String     @unique
@@ -68,8 +97,11 @@ model Bill {
   lineItems     Signup[]
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
+  person        Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
+  personId      String?
 
   @@index([status])
+  @@index([personId])
 }
 
 /// One line item within a Bill: seats for a single holiday.
@@ -141,8 +173,11 @@ model Donation {
   updatedAt     DateTime          @updatedAt
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
+  person        Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
+  personId      String?
 
   @@index([status])
+  @@index([personId])
 }
 
 enum MembershipTier {
@@ -177,6 +212,14 @@ model Membership {
   /// Snapshot of the monthly amount at signup, so a later price change doesn't
   /// rewrite history for members who already signed up at the old rate.
   monthlyAgorot  Int
+  /// From NedarimPlus's standing-order report (KevaSuccess/KevaTashlumim) -
+  /// only ever set for memberships imported from (or re-synced against) a
+  /// pre-existing NedarimPlus standing order. nedarimPaymentsRemaining null
+  /// commonly means no fixed end, but NedarimPlus's own docs don't spell out
+  /// the exact convention for every case - worth checking their dashboard
+  /// directly for a specific standing order if this looks off.
+  nedarimPaymentsMade      Int?
+  nedarimPaymentsRemaining Int?
   /// Set once NedarimPlus's Keva-setup webhook confirms the standing order.
   kevaId         String?            @unique
   status         MembershipStatus   @default(PENDING)
@@ -187,8 +230,11 @@ model Membership {
   updatedAt      DateTime           @updatedAt
   transactions   Transaction[]
   followUps      PaymentFollowUp[]
+  person         Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
+  personId       String?
 
   @@index([status])
+  @@index([personId])
 }
 
 /// An admin-generated payment link for a predetermined, fixed amount - e.g. a
@@ -208,8 +254,11 @@ model PaymentLink {
   updatedAt     DateTime          @updatedAt
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
+  person        Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
+  personId      String?
 
   @@index([status])
+  @@index([personId])
 }
 
 enum FollowUpReason {
@@ -305,8 +354,11 @@ model ExternalTransaction {
   kevaId                String?
   rawPayload            Json?
   receivedAt            DateTime @default(now())
+  person                Person?  @relation(fields: [personId], references: [id], onDelete: SetNull)
+  personId              String?
 
   @@index([receivedAt])
+  @@index([personId])
 }
 
 enum FormFieldType {
@@ -383,9 +435,12 @@ model FormResponse {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+  person    Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
+  personId  String?
 
   @@index([formId])
   @@index([deletedAt])
+  @@index([personId])
 }
 
 model SiteSettings {

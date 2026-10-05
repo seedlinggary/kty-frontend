@@ -13,6 +13,9 @@ import {
   deleteSignupLineItemAction,
 } from "@/lib/actions/signup-admin";
 import type { Prisma, BillStatus } from "@/lib/generated/prisma/client";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
+import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
+import { groupByPerson } from "@/lib/people-grouping";
 
 export async function generateMetadata({
   params,
@@ -36,6 +39,8 @@ type SearchParams = {
   member?: string;
   sort?: string;
   dir?: string;
+  view?: string;
+  mergeError?: string;
 };
 
 const SORT_COLUMNS = [
@@ -71,6 +76,7 @@ export default async function HolidaySignupsPage({
   const memberFilter = sp.member ?? "ALL";
   const sortKey = SORT_COLUMNS.some((c) => c.key === sp.sort) ? sp.sort! : "date";
   const dir = sp.dir === "asc" ? "asc" : "desc";
+  const grouped = sp.view !== "raw";
 
   const billWhere: Prisma.BillWhereInput = {};
   if (memberFilter === "MEMBER") billWhere.isMember = true;
@@ -94,6 +100,7 @@ export default async function HolidaySignupsPage({
             include: {
               transactions: true,
               lineItems: { where: { deletedAt: null }, include: { holiday: true } },
+              person: { select: { id: true, fullName: true } },
             },
           },
         },
@@ -123,6 +130,180 @@ export default async function HolidaySignupsPage({
 
   const isFiltered = Boolean(q) || statusFilter !== "ALL" || memberFilter !== "ALL";
 
+  const redirectParams = new URLSearchParams();
+  if (q) redirectParams.set("q", q);
+  if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
+  if (memberFilter !== "ALL") redirectParams.set("member", memberFilter);
+  const redirectQs = redirectParams.toString();
+  const redirectTo = `/admin/holidays/${holiday.id}/signups${redirectQs ? `?${redirectQs}` : ""}`;
+
+  const { groups, ungrouped } = groupByPerson(signups, (s) => s.bill.person);
+
+  function TableHead() {
+    return (
+      <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+        <tr>
+          <th className="px-4 py-3" />
+          <th className="px-4 py-3">
+            <SortHeader id={holiday!.id} sp={sp} sortKey="name" currentSort={sortKey} currentDir={dir}>
+              Name
+            </SortHeader>
+          </th>
+          <th className="px-4 py-3">Contact</th>
+          <th className="px-4 py-3">
+            <SortHeader id={holiday!.id} sp={sp} sortKey="member" currentSort={sortKey} currentDir={dir}>
+              Member
+            </SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader id={holiday!.id} sp={sp} sortKey="seats" currentSort={sortKey} currentDir={dir}>
+              Seats (M/W)
+            </SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader id={holiday!.id} sp={sp} sortKey="total" currentSort={sortKey} currentDir={dir}>
+              Line Total
+            </SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader id={holiday!.id} sp={sp} sortKey="status" currentSort={sortKey} currentDir={dir}>
+              Status
+            </SortHeader>
+          </th>
+          <th className="px-4 py-3">Bill</th>
+          <th className="px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+    );
+  }
+
+  function Row({ s }: { s: (typeof signups)[number] }) {
+    const bill = s.bill;
+    const otherHolidays = bill.lineItems
+      .filter((item) => item.holidayId !== holiday!.id)
+      .map((item) => item.holiday.nameEn);
+
+    const paymentLink =
+      bill.status === "PENDING"
+        ? buildPaymentLink({
+            billId: bill.referenceCode,
+            amountAgorot: bill.totalAgorot,
+            clientName: bill.fullName,
+            phone: bill.phone,
+            email: bill.email,
+            groupe: bill.lineItems.map((item) => item.holiday.nameEn).join(" + "),
+          })
+        : null;
+    const lastTransaction = bill.transactions[bill.transactions.length - 1];
+
+    return (
+      <tr key={s.id} className="border-t border-line align-top">
+        <td className="px-4 py-3">
+          <MergeCheckbox kind="bill" id={bill.id} />
+        </td>
+        <td className="px-4 py-3 font-medium text-ink">
+          {bill.fullName}
+          <div>
+            <PersonBadge person={bill.person} />
+          </div>
+          {bill.notes && (
+            <p className="mt-1 text-xs font-normal text-ink/50">{bill.notes}</p>
+          )}
+          {otherHolidays.length > 0 && (
+            <p className="mt-1 text-xs font-normal text-accent">
+              Also includes: {otherHolidays.join(", ")}
+            </p>
+          )}
+        </td>
+        <td className="px-4 py-3 text-ink/70">
+          <p>{bill.phone}</p>
+          {bill.email && <p className="text-xs text-ink/50">{bill.email}</p>}
+        </td>
+        <td className="px-4 py-3 text-ink/70">{bill.isMember ? "Member" : "Non-member"}</td>
+        <td className="px-4 py-3 text-ink/70">
+          {s.menSeats} / {s.womenSeats}
+        </td>
+        <td className="px-4 py-3 font-medium text-ink">
+          {formatAgorotAsILS(s.totalAgorot)}
+          {otherHolidays.length > 0 && (
+            <p className="text-xs font-normal text-ink/50">
+              Bill total: {formatAgorotAsILS(bill.totalAgorot)}
+            </p>
+          )}
+        </td>
+        <td className="px-4 py-3">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[bill.status]}`}
+          >
+            {bill.status}
+          </span>
+          {bill.status === "PAID" && lastTransaction?.confirmation && (
+            <p className="mt-1 text-xs text-ink/50">Conf: {lastTransaction.confirmation}</p>
+          )}
+        </td>
+        <td className="px-4 py-3 font-mono text-xs text-ink/60">
+          BILL-{bill.referenceCode}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex flex-col gap-2">
+            <Link
+              href={`/admin/holidays/${holiday!.id}/signups/${s.id}/edit`}
+              className="text-xs font-medium text-ink hover:underline"
+            >
+              Edit
+            </Link>
+            {paymentLink && <CopyLinkButton link={paymentLink} />}
+            {bill.status === "PENDING" && (
+              <form action={markSignupPaidAction} className="flex items-center gap-1">
+                <input type="hidden" name="billId" value={bill.id} />
+                <input
+                  type="text"
+                  name="confirmation"
+                  placeholder="Conf #"
+                  className="w-20 rounded border border-line px-1.5 py-1 text-xs"
+                />
+                <button
+                  type="submit"
+                  className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800"
+                >
+                  Mark Paid
+                </button>
+              </form>
+            )}
+            {bill.status !== "CANCELLED" && (
+              <form action={cancelSignupAction}>
+                <input type="hidden" name="billId" value={bill.id} />
+                <button
+                  type="submit"
+                  className="text-xs font-medium text-red-600 hover:underline"
+                >
+                  Cancel
+                </button>
+              </form>
+            )}
+            {bill.status === "CANCELLED" && (
+              <form action={reopenSignupAction}>
+                <input type="hidden" name="billId" value={bill.id} />
+                <button type="submit" className="text-xs font-medium text-ink hover:underline">
+                  Reopen
+                </button>
+              </form>
+            )}
+            <form action={deleteSignupLineItemAction}>
+              <input type="hidden" name="signupId" value={s.id} />
+              <ConfirmSubmitButton
+                confirmMessage={`Delete ${bill.fullName}'s ${holiday!.nameEn} entry? This removes it from totals and CSV exports. It can be restored from the database if needed, but there's no undo button.`}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Delete
+              </ConfirmSubmitButton>
+            </form>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -134,7 +315,8 @@ export default async function HolidaySignupsPage({
             {signups.length} shown{isFiltered ? " (filtered)" : ""}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <GroupByPersonToggle />
           <a
             href={`/admin/holidays/${holiday.id}/signups/export`}
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -205,171 +387,62 @@ export default async function HolidaySignupsPage({
         )}
       </form>
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-            <tr>
-              <th className="px-4 py-3">
-                <SortHeader id={holiday.id} sp={sp} sortKey="name" currentSort={sortKey} currentDir={dir}>
-                  Name
-                </SortHeader>
-              </th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">
-                <SortHeader id={holiday.id} sp={sp} sortKey="member" currentSort={sortKey} currentDir={dir}>
-                  Member
-                </SortHeader>
-              </th>
-              <th className="px-4 py-3">
-                <SortHeader id={holiday.id} sp={sp} sortKey="seats" currentSort={sortKey} currentDir={dir}>
-                  Seats (M/W)
-                </SortHeader>
-              </th>
-              <th className="px-4 py-3">
-                <SortHeader id={holiday.id} sp={sp} sortKey="total" currentSort={sortKey} currentDir={dir}>
-                  Line Total
-                </SortHeader>
-              </th>
-              <th className="px-4 py-3">
-                <SortHeader id={holiday.id} sp={sp} sortKey="status" currentSort={sortKey} currentDir={dir}>
-                  Status
-                </SortHeader>
-              </th>
-              <th className="px-4 py-3">Bill</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {signups.map((s) => {
-              const bill = s.bill;
-              const otherHolidays = bill.lineItems
-                .filter((item) => item.holidayId !== holiday.id)
-                .map((item) => item.holiday.nameEn);
+      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
-              const paymentLink =
-                bill.status === "PENDING"
-                  ? buildPaymentLink({
-                      billId: bill.referenceCode,
-                      amountAgorot: bill.totalAgorot,
-                      clientName: bill.fullName,
-                      phone: bill.phone,
-                      email: bill.email,
-                      groupe: bill.lineItems.map((item) => item.holiday.nameEn).join(" + "),
-                    })
-                  : null;
-              const lastTransaction = bill.transactions[bill.transactions.length - 1];
-
-              return (
-                <tr key={s.id} className="border-t border-line align-top">
-                  <td className="px-4 py-3 font-medium text-ink">
-                    {bill.fullName}
-                    {bill.notes && (
-                      <p className="mt-1 text-xs font-normal text-ink/50">{bill.notes}</p>
-                    )}
-                    {otherHolidays.length > 0 && (
-                      <p className="mt-1 text-xs font-normal text-accent">
-                        Also includes: {otherHolidays.join(", ")}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-ink/70">
-                    <p>{bill.phone}</p>
-                    {bill.email && <p className="text-xs text-ink/50">{bill.email}</p>}
-                  </td>
-                  <td className="px-4 py-3 text-ink/70">{bill.isMember ? "Member" : "Non-member"}</td>
-                  <td className="px-4 py-3 text-ink/70">
-                    {s.menSeats} / {s.womenSeats}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-ink">
-                    {formatAgorotAsILS(s.totalAgorot)}
-                    {otherHolidays.length > 0 && (
-                      <p className="text-xs font-normal text-ink/50">
-                        Bill total: {formatAgorotAsILS(bill.totalAgorot)}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[bill.status]}`}
-                    >
-                      {bill.status}
-                    </span>
-                    {bill.status === "PAID" && lastTransaction?.confirmation && (
-                      <p className="mt-1 text-xs text-ink/50">Conf: {lastTransaction.confirmation}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-ink/60">
-                    BILL-{bill.referenceCode}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      <Link
-                        href={`/admin/holidays/${holiday.id}/signups/${s.id}/edit`}
-                        className="text-xs font-medium text-ink hover:underline"
-                      >
-                        Edit
-                      </Link>
-                      {paymentLink && <CopyLinkButton link={paymentLink} />}
-                      {bill.status === "PENDING" && (
-                        <form action={markSignupPaidAction} className="flex items-center gap-1">
-                          <input type="hidden" name="billId" value={bill.id} />
-                          <input
-                            type="text"
-                            name="confirmation"
-                            placeholder="Conf #"
-                            className="w-20 rounded border border-line px-1.5 py-1 text-xs"
-                          />
-                          <button
-                            type="submit"
-                            className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800"
-                          >
-                            Mark Paid
-                          </button>
-                        </form>
-                      )}
-                      {bill.status !== "CANCELLED" && (
-                        <form action={cancelSignupAction}>
-                          <input type="hidden" name="billId" value={bill.id} />
-                          <button
-                            type="submit"
-                            className="text-xs font-medium text-red-600 hover:underline"
-                          >
-                            Cancel
-                          </button>
-                        </form>
-                      )}
-                      {bill.status === "CANCELLED" && (
-                        <form action={reopenSignupAction}>
-                          <input type="hidden" name="billId" value={bill.id} />
-                          <button type="submit" className="text-xs font-medium text-ink hover:underline">
-                            Reopen
-                          </button>
-                        </form>
-                      )}
-                      <form action={deleteSignupLineItemAction}>
-                        <input type="hidden" name="signupId" value={s.id} />
-                        <ConfirmSubmitButton
-                          confirmMessage={`Delete ${bill.fullName}'s ${holiday.nameEn} entry? This removes it from totals and CSV exports. It can be restored from the database if needed, but there's no undo button.`}
-                          className="text-xs font-medium text-red-600 hover:underline"
-                        >
-                          Delete
-                        </ConfirmSubmitButton>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {signups.length === 0 && (
+      {signups.length === 0 ? (
+        <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
+          <table className="w-full text-left text-sm">
+            {TableHead()}
+            <tbody>
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-ink/50">
+                <td colSpan={9} className="px-4 py-8 text-center text-ink/50">
                   {isFiltered ? "No signups match these filters." : "No signups yet."}
                 </td>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <>
+          <MergeForm redirectTo={redirectTo} />
+          {grouped ? (
+            <div className="mt-4 space-y-6">
+              {groups.map(({ person, items }) => (
+                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
+                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
+                      {person.fullName}
+                    </Link>
+                    <span className="text-xs text-ink/60">{items.length} signup{items.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    {TableHead()}
+                    <tbody>{items.map((s) => <Row key={s.id} s={s} />)}</tbody>
+                  </table>
+                </div>
+              ))}
+              {ungrouped.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
+                    <table className="w-full text-left text-sm">
+                      {TableHead()}
+                      <tbody>{ungrouped.map((s) => <Row key={s.id} s={s} />)}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-white">
+              <table className="w-full text-left text-sm">
+                {TableHead()}
+                <tbody>{signups.map((s) => <Row key={s.id} s={s} />)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
