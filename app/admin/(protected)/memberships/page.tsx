@@ -12,6 +12,8 @@ import { groupByPerson } from "@/lib/people-grouping";
 import { ImportNedarimMembersButton } from "@/components/admin/import-nedarim-members-button";
 import { isNedarimReportingConfigured } from "@/lib/nedarim-reports";
 import { formatAdminDate } from "@/lib/admin-dates";
+import { SortHeader } from "@/components/admin/sort-header";
+import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 
 export const metadata: Metadata = { title: "Memberships" };
 
@@ -24,28 +26,13 @@ const statusStyles: Record<string, string> = {
 
 type MembershipRow = Prisma.MembershipGetPayload<{ include: { person: { select: { id: true; fullName: true } } } }>;
 
-function TableHead() {
-  return (
-    <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-      <tr>
-        <th className="px-4 py-3" />
-        <th className="px-4 py-3">Name</th>
-        <th className="px-4 py-3">Contact</th>
-        <th className="px-4 py-3">Tier</th>
-        <th className="px-4 py-3">Monthly</th>
-        <th className="px-4 py-3">Next Charge</th>
-        <th className="px-4 py-3">Status</th>
-        <th className="px-4 py-3">Reference</th>
-        <th className="px-4 py-3">Actions</th>
-      </tr>
-    </thead>
-  );
-}
+const SORT_COLUMNS = ["since", "name", "tier", "monthly", "next", "status"] as const;
+type SortKey = (typeof SORT_COLUMNS)[number];
 
 export default async function MembershipsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
@@ -53,6 +40,8 @@ export default async function MembershipsPage({
   const q = sp.q?.trim() ?? "";
   const statusFilter = sp.status ?? "ALL";
   const grouped = sp.view !== "raw";
+  const sortKey: SortKey = SORT_COLUMNS.includes(sp.sort as SortKey) ? (sp.sort as SortKey) : "since";
+  const dir: SortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const where: Prisma.MembershipWhereInput = {};
   if (statusFilter !== "ALL") where.status = statusFilter as MembershipStatus;
@@ -66,15 +55,31 @@ export default async function MembershipsPage({
     ];
   }
 
-  const memberships = await prisma.membership.findMany({
+  const fetched = await prisma.membership.findMany({
     where,
     include: { person: { select: { id: true, fullName: true } } },
-    orderBy: { createdAt: "desc" },
   });
-  const activeCount = memberships.filter((m) => m.status === "ACTIVE").length;
-  const monthlyTotal = memberships
-    .filter((m) => m.status === "ACTIVE")
-    .reduce((sum, m) => sum + m.monthlyAgorot, 0);
+  const activeCount = fetched.filter((m) => m.status === "ACTIVE").length;
+  const monthlyTotal = fetched.filter((m) => m.status === "ACTIVE").reduce((sum, m) => sum + m.monthlyAgorot, 0);
+
+  const direction = dir === "asc" ? 1 : -1;
+  const memberships = [...fetched].sort((a, b) => {
+    switch (sortKey) {
+      case "name":
+        return direction * a.fullName.localeCompare(b.fullName);
+      case "tier":
+        return direction * a.tier.localeCompare(b.tier);
+      case "monthly":
+        return direction * (a.monthlyAgorot - b.monthlyAgorot);
+      case "next":
+        return direction * ((a.nextChargeDate?.getTime() ?? 0) - (b.nextChargeDate?.getTime() ?? 0));
+      case "status":
+        return direction * a.status.localeCompare(b.status);
+      case "since":
+      default:
+        return direction * (a.createdAt.getTime() - b.createdAt.getTime());
+    }
+  });
 
   const redirectParams = new URLSearchParams();
   if (q) redirectParams.set("q", q);
@@ -84,12 +89,48 @@ export default async function MembershipsPage({
 
   const { groups, ungrouped } = groupByPerson(memberships, (m) => m.person);
 
+  function sortHref(column: SortKey) {
+    return buildSortHref("/admin/memberships", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
+  }
+
+  function TableHead() {
+    return (
+      <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+        <tr>
+          <th className="px-4 py-3" />
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("since")} isActive={sortKey === "since"} dir={dir}>Member Since</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("name")} isActive={sortKey === "name"} dir={dir}>Name</SortHeader>
+          </th>
+          <th className="px-4 py-3">Contact</th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("tier")} isActive={sortKey === "tier"} dir={dir}>Tier</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("monthly")} isActive={sortKey === "monthly"} dir={dir}>Monthly</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("next")} isActive={sortKey === "next"} dir={dir}>Next Charge</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("status")} isActive={sortKey === "status"} dir={dir}>Status</SortHeader>
+          </th>
+          <th className="px-4 py-3">Reference</th>
+          <th className="px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+    );
+  }
+
   function Row({ m }: { m: MembershipRow }) {
     return (
       <tr key={m.id} className="border-t border-line align-top">
         <td className="px-4 py-3">
           <MergeCheckbox kind="membership" id={m.id} />
         </td>
+        <td className="px-4 py-3 whitespace-nowrap text-ink/70">{formatAdminDate(m.createdAt)}</td>
         <td className="px-4 py-3 font-medium text-ink">
           {m.fullName}
           <div>
@@ -174,6 +215,8 @@ export default async function MembershipsPage({
       )}
 
       <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-4">
+        <input type="hidden" name="sort" value={sortKey} />
+        <input type="hidden" name="dir" value={dir} />
         <div>
           <label className="mb-1 block text-xs font-medium text-ink/60">Search</label>
           <input type="text" name="q" defaultValue={q} placeholder="Name, email, or phone" className="w-56 rounded-md border border-line px-3 py-2 text-sm" />
@@ -198,10 +241,10 @@ export default async function MembershipsPage({
       {memberships.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
           <table className="w-full text-left text-sm">
-            <TableHead />
+            {TableHead()}
             <tbody>
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-ink/50">No memberships yet.</td>
+                <td colSpan={10} className="px-4 py-8 text-center text-ink/50">No memberships yet.</td>
               </tr>
             </tbody>
           </table>
@@ -220,7 +263,7 @@ export default async function MembershipsPage({
                     <span className="text-xs text-ink/60">{items.length} membership{items.length === 1 ? "" : "s"}</span>
                   </div>
                   <table className="w-full text-left text-sm">
-                    <TableHead />
+                    {TableHead()}
                     <tbody>{items.map((m) => <Row key={m.id} m={m} />)}</tbody>
                   </table>
                 </div>
@@ -230,7 +273,7 @@ export default async function MembershipsPage({
                   <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
-                      <TableHead />
+                      {TableHead()}
                       <tbody>{ungrouped.map((m) => <Row key={m.id} m={m} />)}</tbody>
                     </table>
                   </div>
@@ -240,7 +283,7 @@ export default async function MembershipsPage({
           ) : (
             <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-white">
               <table className="w-full text-left text-sm">
-                <TableHead />
+                {TableHead()}
                 <tbody>{memberships.map((m) => <Row key={m.id} m={m} />)}</tbody>
               </table>
             </div>

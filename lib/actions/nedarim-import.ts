@@ -13,8 +13,27 @@ import { generateBillId } from "@/lib/billid";
 import { MEMBERSHIP_PRICES_AGOROT } from "@/lib/memberships";
 import type { MembershipTier, MembershipStatus } from "@/lib/generated/prisma/client";
 
+// Kept small deliberately: each Keva needs its own NedarimPlus API call
+// (GetKevaId) plus several DB round trips, and the whole thing runs inside
+// one serverless function invocation with a hard wall-clock limit (this is
+// what was silently cutting the import off after 3-5 minutes, a few dozen
+// members in - not a crash in the usual sense, just Vercel ending the
+// function). Processing a small batch per call and having the button
+// re-invoke this with the next offset keeps every single call comfortably
+// short, and means a slow/flaky NedarimPlus response only ever costs that
+// one batch, never the members already imported before it.
+const BATCH_SIZE = 5;
+
 export type ImportNedarimMembersResult =
-  | { ok: true; imported: number; skipped: number; paymentsImported: number }
+  | {
+      ok: true;
+      imported: number;
+      skipped: number;
+      paymentsImported: number;
+      processed: number;
+      total: number;
+      done: boolean;
+    }
   | { ok: false; error: string };
 
 /**
@@ -123,6 +142,10 @@ function parseNedarimDate(raw: unknown): Date | null {
  * standing order's own recurring amount rather than recording a clearly-
  * wrong ₪0. Also retroactively fixes any ₪0 a past run already left behind
  * from before this fallback existed, for exactly the same reason.
+ *
+ * Fetches every existing Transaction for this membership once up front
+ * (rather than one findFirst per history entry) so a standing order with a
+ * long history costs one extra query, not one per past charge.
  */
 async function syncMembershipHistory(
   membershipId: string,
@@ -143,6 +166,11 @@ async function syncMembershipHistory(
   });
 
   const history = detail.HistoryData ?? [];
+  const existingTransactions = await prisma.transaction.findMany({
+    where: { membershipId, nedarimTransactionId: { not: null } },
+  });
+  const byTransactionId = new Map(existingTransactions.map((t) => [t.nedarimTransactionId, t]));
+
   let imported = 0;
   let latestChargeAt: Date | null = null;
 
@@ -153,9 +181,7 @@ async function syncMembershipHistory(
     const amountAgorot = amount != null && amount > 0 ? shekelsToAgorot(amount) : fallbackAmountAgorot;
     const receivedAt = parseNedarimDate(entry.Date) ?? new Date();
 
-    const existing = await prisma.transaction.findFirst({
-      where: { membershipId, nedarimTransactionId: entry.TransactionId },
-    });
+    const existing = byTransactionId.get(entry.TransactionId);
     if (existing) {
       const fixes: { amountAgorot?: number; receivedAt?: Date } = {};
       if (existing.amountAgorot === 0 && amountAgorot > 0) fixes.amountAgorot = amountAgorot;
@@ -198,6 +224,58 @@ async function syncMembershipHistory(
   return imported;
 }
 
+async function importOne(keva: KevaListEntry): Promise<{ created: boolean; paymentsImported: number }> {
+  let membership = await prisma.membership.findUnique({ where: { kevaId: keva.KevaId } });
+  let created = false;
+
+  if (membership) {
+    // Signup date and next-charge date have no admin-editable UI anywhere
+    // (nextChargeDate is otherwise only ever set by the webhook itself), so
+    // both are always safe to correct from NedarimPlus's own report - fixes
+    // anything imported before date parsing was correct. Never touches
+    // status/tier/amount here: those can be deliberately changed by staff
+    // (Cancel/Reactivate/Edit), so a re-sync leaves them alone.
+    if (membership.createdBy === "nedarim-import") {
+      const creationDate = parseNedarimDate(keva.CreationDate);
+      const nextChargeDate = parseNedarimDate(keva.NextDate);
+      const fixes: { createdAt?: Date; nextChargeDate?: Date } = {};
+      if (creationDate && creationDate.getTime() !== membership.createdAt.getTime()) {
+        fixes.createdAt = creationDate;
+      }
+      if (nextChargeDate && nextChargeDate.getTime() !== membership.nextChargeDate?.getTime()) {
+        fixes.nextChargeDate = nextChargeDate;
+      }
+      if (Object.keys(fixes).length > 0) {
+        membership = await prisma.membership.update({ where: { id: membership.id }, data: fixes });
+      }
+    }
+  } else {
+    const amount = toNumber(keva.Amount);
+    const monthlyAgorot = amount != null ? shekelsToAgorot(amount) : 0;
+    membership = await prisma.membership.create({
+      data: {
+        referenceCode: generateBillId(),
+        fullName: keva.ClientName?.trim() || "Unknown (imported)",
+        email: keva.Mail?.trim() || "",
+        phone: keva.Phone?.trim() || null,
+        address: keva.Adresse?.trim() || null,
+        city: keva.City?.trim() || null,
+        tier: inferTier(monthlyAgorot),
+        monthlyAgorot,
+        kevaId: keva.KevaId,
+        status: inferStatus(keva),
+        nextChargeDate: parseNedarimDate(keva.NextDate),
+        createdAt: parseNedarimDate(keva.CreationDate) ?? undefined,
+        createdBy: "nedarim-import",
+      },
+    });
+    created = true;
+  }
+
+  const paymentsImported = await syncMembershipHistory(membership.id, keva.KevaId, membership.monthlyAgorot);
+  return { created, paymentsImported };
+}
+
 /**
  * Pulls in every standing order NedarimPlus already has on file - including
  * ones set up directly on NedarimPlus's own site before this system existed
@@ -208,8 +286,15 @@ async function syncMembershipHistory(
  * order. Safe to run repeatedly - a Membership already on file (matched by
  * KevaId) is never duplicated, and history is matched by NedarimPlus's own
  * TransactionId, so re-running only ever fills in what's still missing.
+ *
+ * Processes only BATCH_SIZE standing orders per call and reports back
+ * `processed`/`total`/`done` so the caller can keep invoking this with the
+ * next offset until finished - each individual NedarimPlus account can have
+ * far more standing orders than fit in one serverless function's time
+ * budget (confirmed: a full run was being cut off after a few dozen, a few
+ * minutes in, well before reaching the end of the list).
  */
-export async function importNedarimMembersAction(): Promise<ImportNedarimMembersResult> {
+export async function importNedarimMembersAction(offset: number = 0): Promise<ImportNedarimMembersResult> {
   if (!isNedarimReportingConfigured()) {
     return { ok: false, error: "NedarimPlus reporting isn't configured (missing NEDARIM_APIPASSWORD)." };
   }
@@ -219,69 +304,22 @@ export async function importNedarimMembersAction(): Promise<ImportNedarimMembers
     return { ok: false, error: "Couldn't reach NedarimPlus's reporting API just now - try again shortly." };
   }
 
+  const batch = kevaList.filter((k) => k.KevaId).slice(offset, offset + BATCH_SIZE);
+
   let imported = 0;
   let skipped = 0;
   let paymentsImported = 0;
 
-  for (const keva of kevaList) {
-    if (!keva.KevaId) continue;
-
-    let membership = await prisma.membership.findUnique({ where: { kevaId: keva.KevaId } });
-
-    if (membership) {
-      skipped++;
-      // Signup date and next-charge date have no admin-editable UI anywhere
-      // (nextChargeDate is otherwise only ever set by the webhook itself),
-      // so both are always safe to correct from NedarimPlus's own report -
-      // fixes anything imported before date parsing was correct. Never
-      // touches status/tier/amount here: those can be deliberately changed
-      // by staff (Cancel/Reactivate/Edit), so a re-sync leaves them alone.
-      if (membership.createdBy === "nedarim-import") {
-        const creationDate = parseNedarimDate(keva.CreationDate);
-        const nextChargeDate = parseNedarimDate(keva.NextDate);
-        const fixes: { createdAt?: Date; nextChargeDate?: Date } = {};
-        if (creationDate && creationDate.getTime() !== membership.createdAt.getTime()) {
-          fixes.createdAt = creationDate;
-        }
-        if (nextChargeDate && nextChargeDate.getTime() !== membership.nextChargeDate?.getTime()) {
-          fixes.nextChargeDate = nextChargeDate;
-        }
-        if (Object.keys(fixes).length > 0) {
-          membership = await prisma.membership.update({ where: { id: membership.id }, data: fixes });
-        }
-      }
-    } else {
-      const amount = toNumber(keva.Amount);
-      const monthlyAgorot = amount != null ? shekelsToAgorot(amount) : 0;
-      membership = await prisma.membership.create({
-        data: {
-          referenceCode: generateBillId(),
-          fullName: keva.ClientName?.trim() || "Unknown (imported)",
-          email: keva.Mail?.trim() || "",
-          phone: keva.Phone?.trim() || null,
-          address: keva.Adresse?.trim() || null,
-          city: keva.City?.trim() || null,
-          tier: inferTier(monthlyAgorot),
-          monthlyAgorot,
-          kevaId: keva.KevaId,
-          status: inferStatus(keva),
-          nextChargeDate: parseNedarimDate(keva.NextDate),
-          createdAt: parseNedarimDate(keva.CreationDate) ?? undefined,
-          createdBy: "nedarim-import",
-        },
-      });
-      imported++;
-    }
-
-    // Always re-sync, even for a membership that already looks fully
-    // imported - GetKevaId isn't rate-limited, and a "looks complete"
-    // membership is exactly the case that needs re-checking after a fix
-    // like this one (wrong amounts/dates on already-imported history,
-    // never caught by a simple count check since the count was already
-    // right - just the values weren't).
-    paymentsImported += await syncMembershipHistory(membership.id, keva.KevaId, membership.monthlyAgorot);
+  for (const keva of batch) {
+    const result = await importOne(keva);
+    if (result.created) imported++;
+    else skipped++;
+    paymentsImported += result.paymentsImported;
   }
 
+  const total = kevaList.filter((k) => k.KevaId).length;
+  const processed = Math.min(offset + batch.length, total);
+
   revalidatePath("/admin/memberships");
-  return { ok: true, imported, skipped, paymentsImported };
+  return { ok: true, imported, skipped, paymentsImported, processed, total, done: processed >= total };
 }

@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
+import { formatAdminDate } from "@/lib/admin-dates";
 import { isEmailConfigured } from "@/lib/email";
 import { resolveFollowUpAction, dismissFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import { SendFollowUpButton, SendAllFollowUpsButton } from "@/components/admin/follow-up-actions";
 import { ImportFailureEmailForm } from "@/components/admin/import-failure-email-form";
+import { SortHeader } from "@/components/admin/sort-header";
+import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
 export const metadata: Metadata = { title: "Payment Follow-Ups" };
@@ -41,13 +44,19 @@ function describe(followUp: {
   return { type: "Unknown", name: "—", amount: 0, email: null };
 }
 
+const SORT_COLUMNS = ["flagged", "type", "name", "amount", "status", "emails"] as const;
+type SortKey = (typeof SORT_COLUMNS)[number];
+
 export default async function PaymentFollowUpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; sort?: string; dir?: string }>;
 }) {
   const sp = await searchParams;
   const statusFilter = sp.status ?? "OPEN_AND_SENT";
+  const q = sp.q?.trim().toLowerCase() ?? "";
+  const sortKey: SortKey = SORT_COLUMNS.includes(sp.sort as SortKey) ? (sp.sort as SortKey) : "flagged";
+  const dir: SortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const where: Prisma.PaymentFollowUpWhereInput =
     statusFilter === "ALL"
@@ -56,7 +65,7 @@ export default async function PaymentFollowUpsPage({
         ? { status: { in: ["OPEN", "EMAIL_SENT"] } }
         : { status: statusFilter as "OPEN" | "EMAIL_SENT" | "RESOLVED" | "DISMISSED" };
 
-  const followUps = await prisma.paymentFollowUp.findMany({
+  const fetched = await prisma.paymentFollowUp.findMany({
     where,
     include: {
       bill: { select: { fullName: true, totalAgorot: true, email: true } },
@@ -64,13 +73,42 @@ export default async function PaymentFollowUpsPage({
       membership: { select: { fullName: true, monthlyAgorot: true, email: true } },
       paymentLink: { select: { label: true, fullName: true, amountAgorot: true, email: true } },
     },
-    orderBy: { createdAt: "desc" },
   });
   // (externalFullName/externalEmail/externalAmountAgorot/externalCategory are
   // plain columns on PaymentFollowUp itself, already included by default.)
 
-  const openCount = followUps.filter((f) => f.status === "OPEN").length;
+  let withInfo = fetched.map((f) => ({ f, info: describe(f) }));
+  if (q) {
+    withInfo = withInfo.filter(
+      ({ info }) => info.name.toLowerCase().includes(q) || info.email?.toLowerCase().includes(q)
+    );
+  }
+
+  const direction = dir === "asc" ? 1 : -1;
+  withInfo.sort((a, b) => {
+    switch (sortKey) {
+      case "type":
+        return direction * a.info.type.localeCompare(b.info.type);
+      case "name":
+        return direction * a.info.name.localeCompare(b.info.name);
+      case "amount":
+        return direction * (a.info.amount - b.info.amount);
+      case "status":
+        return direction * a.f.status.localeCompare(b.f.status);
+      case "emails":
+        return direction * (a.f.emailsSentCount - b.f.emailsSentCount);
+      case "flagged":
+      default:
+        return direction * (a.f.createdAt.getTime() - b.f.createdAt.getTime());
+    }
+  });
+
+  const openCount = fetched.filter((f) => f.status === "OPEN").length;
   const emailConfigured = isEmailConfigured();
+
+  function sortHref(column: SortKey) {
+    return buildSortHref("/admin/payment-follow-ups", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
+  }
 
   return (
     <div>
@@ -99,15 +137,30 @@ export default async function PaymentFollowUpsPage({
         </p>
       )}
 
-      <form method="get" className="mt-6 flex items-end gap-3">
-        <select name="status" defaultValue={statusFilter} className="rounded-md border border-line px-3 py-2 text-sm">
-          <option value="OPEN_AND_SENT">Needs attention (open + already emailed)</option>
-          <option value="OPEN">Open only</option>
-          <option value="EMAIL_SENT">Emailed only</option>
-          <option value="RESOLVED">Resolved</option>
-          <option value="DISMISSED">Dismissed</option>
-          <option value="ALL">All</option>
-        </select>
+      <form method="get" className="mt-6 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="sort" value={sortKey} />
+        <input type="hidden" name="dir" value={dir} />
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">Search</label>
+          <input
+            type="text"
+            name="q"
+            defaultValue={sp.q ?? ""}
+            placeholder="Name or email"
+            className="w-56 rounded-md border border-line px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">Status</label>
+          <select name="status" defaultValue={statusFilter} className="rounded-md border border-line px-3 py-2 text-sm">
+            <option value="OPEN_AND_SENT">Needs attention (open + already emailed)</option>
+            <option value="OPEN">Open only</option>
+            <option value="EMAIL_SENT">Emailed only</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="DISMISSED">Dismissed</option>
+            <option value="ALL">All</option>
+          </select>
+        </div>
         <button type="submit" className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale">
           Apply
         </button>
@@ -117,63 +170,72 @@ export default async function PaymentFollowUpsPage({
         <table className="w-full text-left text-sm">
           <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
             <tr>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Amount</th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("type")} isActive={sortKey === "type"} dir={dir}>Type</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("name")} isActive={sortKey === "name"} dir={dir}>Name</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("amount")} isActive={sortKey === "amount"} dir={dir}>Amount</SortHeader>
+              </th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Reason</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Emails Sent</th>
-              <th className="px-4 py-3">Flagged</th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("status")} isActive={sortKey === "status"} dir={dir}>Status</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("emails")} isActive={sortKey === "emails"} dir={dir}>Emails Sent</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("flagged")} isActive={sortKey === "flagged"} dir={dir}>Flagged</SortHeader>
+              </th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {followUps.map((f) => {
-              const info = describe(f);
-              return (
-                <tr key={f.id} className="border-t border-line align-top">
-                  <td className="px-4 py-3 text-ink/70">{info.type}</td>
-                  <td className="px-4 py-3 font-medium text-ink">{info.name}</td>
-                  <td className="px-4 py-3 text-ink/70">{formatAgorotAsILS(info.amount)}</td>
-                  <td className="px-4 py-3 text-ink/70">{info.email || <span className="text-ink/40">none</span>}</td>
-                  <td className="px-4 py-3 text-ink/70">
-                    {f.reason === "STALE_PENDING"
-                      ? "Stale pending"
-                      : f.reason === "FAILURE_EMAIL"
-                        ? "Failure email"
-                        : f.reason === "API_DECLINE"
-                          ? "Detected automatically (standing order check)"
-                          : "Manual"}
-                    {f.failureReason && <p className="mt-1 text-xs text-ink/50">{f.failureReason}{f.cardLast4 && ` (card •${f.cardLast4})`}</p>}
-                    {f.notes && <p className="mt-1 text-xs text-ink/50">{f.notes}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[f.status]}`}>{f.status.replace("_", " ")}</span>
-                  </td>
-                  <td className="px-4 py-3 text-ink/70">{f.emailsSentCount}</td>
-                  <td className="px-4 py-3 text-ink/70">{f.createdAt.toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      {f.status !== "RESOLVED" && f.status !== "DISMISSED" && (
-                        <>
-                          <SendFollowUpButton followUpId={f.id} />
-                          <form action={resolveFollowUpAction}>
-                            <input type="hidden" name="id" value={f.id} />
-                            <button type="submit" className="text-xs font-medium text-ink hover:underline">Mark Resolved</button>
-                          </form>
-                          <form action={dismissFollowUpAction}>
-                            <input type="hidden" name="id" value={f.id} />
-                            <button type="submit" className="text-xs font-medium text-ink/60 hover:underline">Dismiss</button>
-                          </form>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {followUps.length === 0 && (
+            {withInfo.map(({ f, info }) => (
+              <tr key={f.id} className="border-t border-line align-top">
+                <td className="px-4 py-3 text-ink/70">{info.type}</td>
+                <td className="px-4 py-3 font-medium text-ink">{info.name}</td>
+                <td className="px-4 py-3 text-ink/70">{formatAgorotAsILS(info.amount)}</td>
+                <td className="px-4 py-3 text-ink/70">{info.email || <span className="text-ink/40">none</span>}</td>
+                <td className="px-4 py-3 text-ink/70">
+                  {f.reason === "STALE_PENDING"
+                    ? "Stale pending"
+                    : f.reason === "FAILURE_EMAIL"
+                      ? "Failure email"
+                      : f.reason === "API_DECLINE"
+                        ? "Detected automatically (standing order check)"
+                        : "Manual"}
+                  {f.failureReason && <p className="mt-1 text-xs text-ink/50">{f.failureReason}{f.cardLast4 && ` (card •${f.cardLast4})`}</p>}
+                  {f.notes && <p className="mt-1 text-xs text-ink/50">{f.notes}</p>}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[f.status]}`}>{f.status.replace("_", " ")}</span>
+                </td>
+                <td className="px-4 py-3 text-ink/70">{f.emailsSentCount}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-ink/70">{formatAdminDate(f.createdAt)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-col gap-2">
+                    {f.status !== "RESOLVED" && f.status !== "DISMISSED" && (
+                      <>
+                        <SendFollowUpButton followUpId={f.id} />
+                        <form action={resolveFollowUpAction}>
+                          <input type="hidden" name="id" value={f.id} />
+                          <button type="submit" className="text-xs font-medium text-ink hover:underline">Mark Resolved</button>
+                        </form>
+                        <form action={dismissFollowUpAction}>
+                          <input type="hidden" name="id" value={f.id} />
+                          <button type="submit" className="text-xs font-medium text-ink/60 hover:underline">Dismiss</button>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {withInfo.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-ink/50">Nothing here right now.</td>
               </tr>

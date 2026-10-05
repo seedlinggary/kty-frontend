@@ -3,20 +3,28 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { mergeIntoPersonAction } from "@/lib/actions/people";
 import { findMergeRecommendations } from "@/lib/merge-recommendations";
+import { SortHeader } from "@/components/admin/sort-header";
+import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
+import { formatAdminDate } from "@/lib/admin-dates";
 
 export const metadata: Metadata = { title: "People" };
+
+const SORT_COLUMNS = ["updated", "name", "bills", "donations", "memberships", "paymentLinks", "formResponses", "externalTransactions"] as const;
+type SortKey = (typeof SORT_COLUMNS)[number];
 
 export default async function PeoplePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; sort?: string; dir?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
+  const sortKey: SortKey = SORT_COLUMNS.includes(sp.sort as SortKey) ? (sp.sort as SortKey) : "updated";
+  const dir: SortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const recommendations = await findMergeRecommendations();
 
-  const people = await prisma.person.findMany({
+  const fetched = await prisma.person.findMany({
     where: q
       ? {
           OR: [
@@ -38,8 +46,34 @@ export default async function PeoplePage({
         },
       },
     },
-    orderBy: { updatedAt: "desc" },
   });
+
+  const direction = dir === "asc" ? 1 : -1;
+  const people = [...fetched].sort((a, b) => {
+    switch (sortKey) {
+      case "name":
+        return direction * a.fullName.localeCompare(b.fullName);
+      case "bills":
+        return direction * (a._count.bills - b._count.bills);
+      case "donations":
+        return direction * (a._count.donations - b._count.donations);
+      case "memberships":
+        return direction * (a._count.memberships - b._count.memberships);
+      case "paymentLinks":
+        return direction * (a._count.paymentLinks - b._count.paymentLinks);
+      case "formResponses":
+        return direction * (a._count.formResponses - b._count.formResponses);
+      case "externalTransactions":
+        return direction * (a._count.externalTransactions - b._count.externalTransactions);
+      case "updated":
+      default:
+        return direction * (a.updatedAt.getTime() - b.updatedAt.getTime());
+    }
+  });
+
+  function sortHref(column: SortKey) {
+    return buildSortHref("/admin/people", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
+  }
 
   return (
     <div>
@@ -109,6 +143,8 @@ export default async function PeoplePage({
       )}
 
       <form method="get" className="mt-6 flex items-end gap-3">
+        <input type="hidden" name="sort" value={sortKey} />
+        <input type="hidden" name="dir" value={dir} />
         <input
           type="text"
           name="q"
@@ -125,14 +161,31 @@ export default async function PeoplePage({
         <table className="w-full text-left text-sm">
           <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
             <tr>
-              <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("name")} isActive={sortKey === "name"} dir={dir}>Name</SortHeader>
+              </th>
               <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Holiday Seats</th>
-              <th className="px-4 py-3">Donations</th>
-              <th className="px-4 py-3">Memberships</th>
-              <th className="px-4 py-3">Payment Links</th>
-              <th className="px-4 py-3">Form Submissions</th>
-              <th className="px-4 py-3">Other</th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("bills")} isActive={sortKey === "bills"} dir={dir}>Holiday Seats</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("donations")} isActive={sortKey === "donations"} dir={dir}>Donations</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("memberships")} isActive={sortKey === "memberships"} dir={dir}>Memberships</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("paymentLinks")} isActive={sortKey === "paymentLinks"} dir={dir}>Payment Links</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("formResponses")} isActive={sortKey === "formResponses"} dir={dir}>Form Submissions</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("externalTransactions")} isActive={sortKey === "externalTransactions"} dir={dir}>Other</SortHeader>
+              </th>
+              <th className="px-4 py-3">
+                <SortHeader href={sortHref("updated")} isActive={sortKey === "updated"} dir={dir}>Last Updated</SortHeader>
+              </th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -150,6 +203,7 @@ export default async function PeoplePage({
                 <td className="px-4 py-3 text-ink/70">{p._count.paymentLinks}</td>
                 <td className="px-4 py-3 text-ink/70">{p._count.formResponses}</td>
                 <td className="px-4 py-3 text-ink/70">{p._count.externalTransactions}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-ink/70">{formatAdminDate(p.updatedAt)}</td>
                 <td className="px-4 py-3">
                   <Link href={`/admin/people/${p.id}`} className="text-xs font-medium text-ink hover:underline">
                     View
@@ -159,7 +213,7 @@ export default async function PeoplePage({
             ))}
             {people.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-ink/50">
+                <td colSpan={10} className="px-4 py-8 text-center text-ink/50">
                   No combined people yet - merge some matching records from the{" "}
                   <Link href="/admin/search" className="text-accent hover:underline">
                     Search

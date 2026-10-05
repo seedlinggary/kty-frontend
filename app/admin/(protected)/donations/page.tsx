@@ -3,12 +3,15 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
+import { formatAdminDate } from "@/lib/admin-dates";
 import { markDonationPaidAction, cancelDonationAction } from "@/lib/actions/payment-admin";
 import { flagForFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import type { BillStatus, Prisma } from "@/lib/generated/prisma/client";
 import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
 import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
 import { groupByPerson } from "@/lib/people-grouping";
+import { SortHeader } from "@/components/admin/sort-header";
+import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 
 export const metadata: Metadata = { title: "Donations" };
 
@@ -20,27 +23,13 @@ const statusStyles: Record<string, string> = {
 
 type DonationRow = Prisma.DonationGetPayload<{ include: { person: { select: { id: true; fullName: true } } } }>;
 
-function TableHead() {
-  return (
-    <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-      <tr>
-        <th className="px-4 py-3" />
-        <th className="px-4 py-3">Name</th>
-        <th className="px-4 py-3">Contact</th>
-        <th className="px-4 py-3">Purpose</th>
-        <th className="px-4 py-3">Amount</th>
-        <th className="px-4 py-3">Status</th>
-        <th className="px-4 py-3">Reference</th>
-        <th className="px-4 py-3">Actions</th>
-      </tr>
-    </thead>
-  );
-}
+const SORT_COLUMNS = ["date", "name", "purpose", "amount", "status"] as const;
+type SortKey = (typeof SORT_COLUMNS)[number];
 
 export default async function DonationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
@@ -48,6 +37,8 @@ export default async function DonationsPage({
   const q = sp.q?.trim() ?? "";
   const statusFilter = sp.status ?? "ALL";
   const grouped = sp.view !== "raw";
+  const sortKey: SortKey = SORT_COLUMNS.includes(sp.sort as SortKey) ? (sp.sort as SortKey) : "date";
+  const dir: SortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const where: Prisma.DonationWhereInput = {};
   if (statusFilter !== "ALL") where.status = statusFilter as BillStatus;
@@ -61,12 +52,28 @@ export default async function DonationsPage({
     ];
   }
 
-  const donations = await prisma.donation.findMany({
+  const fetched = await prisma.donation.findMany({
     where,
     include: { person: { select: { id: true, fullName: true } } },
-    orderBy: { createdAt: "desc" },
   });
-  const totalPaid = donations.filter((d) => d.status === "PAID").reduce((sum, d) => sum + d.amountAgorot, 0);
+  const totalPaid = fetched.filter((d) => d.status === "PAID").reduce((sum, d) => sum + d.amountAgorot, 0);
+
+  const direction = dir === "asc" ? 1 : -1;
+  const donations = [...fetched].sort((a, b) => {
+    switch (sortKey) {
+      case "name":
+        return direction * a.fullName.localeCompare(b.fullName);
+      case "purpose":
+        return direction * (a.purpose || "").localeCompare(b.purpose || "");
+      case "amount":
+        return direction * (a.amountAgorot - b.amountAgorot);
+      case "status":
+        return direction * a.status.localeCompare(b.status);
+      case "date":
+      default:
+        return direction * (a.createdAt.getTime() - b.createdAt.getTime());
+    }
+  });
 
   const redirectParams = new URLSearchParams();
   if (q) redirectParams.set("q", q);
@@ -76,12 +83,45 @@ export default async function DonationsPage({
 
   const { groups, ungrouped } = groupByPerson(donations, (d) => d.person);
 
+  function sortHref(column: SortKey) {
+    return buildSortHref("/admin/donations", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
+  }
+
+  function TableHead() {
+    return (
+      <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+        <tr>
+          <th className="px-4 py-3" />
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("date")} isActive={sortKey === "date"} dir={dir}>Date</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("name")} isActive={sortKey === "name"} dir={dir}>Name</SortHeader>
+          </th>
+          <th className="px-4 py-3">Contact</th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("purpose")} isActive={sortKey === "purpose"} dir={dir}>Purpose</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("amount")} isActive={sortKey === "amount"} dir={dir}>Amount</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("status")} isActive={sortKey === "status"} dir={dir}>Status</SortHeader>
+          </th>
+          <th className="px-4 py-3">Reference</th>
+          <th className="px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+    );
+  }
+
   function Row({ d }: { d: DonationRow }) {
     return (
       <tr key={d.id} className="border-t border-line align-top">
         <td className="px-4 py-3">
           <MergeCheckbox kind="donation" id={d.id} />
         </td>
+        <td className="px-4 py-3 whitespace-nowrap text-ink/70">{formatAdminDate(d.createdAt)}</td>
         <td className="px-4 py-3 font-medium text-ink">
           {d.fullName}
           <div>
@@ -152,6 +192,8 @@ export default async function DonationsPage({
       </div>
 
       <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-4">
+        <input type="hidden" name="sort" value={sortKey} />
+        <input type="hidden" name="dir" value={dir} />
         <div>
           <label className="mb-1 block text-xs font-medium text-ink/60">Search</label>
           <input
@@ -181,10 +223,10 @@ export default async function DonationsPage({
       {donations.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
           <table className="w-full text-left text-sm">
-            <TableHead />
+            {TableHead()}
             <tbody>
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-ink/50">No donations yet.</td>
+                <td colSpan={9} className="px-4 py-8 text-center text-ink/50">No donations yet.</td>
               </tr>
             </tbody>
           </table>
@@ -203,7 +245,7 @@ export default async function DonationsPage({
                     <span className="text-xs text-ink/60">{items.length} donation{items.length === 1 ? "" : "s"}</span>
                   </div>
                   <table className="w-full text-left text-sm">
-                    <TableHead />
+                    {TableHead()}
                     <tbody>{items.map((d) => <Row key={d.id} d={d} />)}</tbody>
                   </table>
                 </div>
@@ -213,7 +255,7 @@ export default async function DonationsPage({
                   <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
-                      <TableHead />
+                      {TableHead()}
                       <tbody>{ungrouped.map((d) => <Row key={d.id} d={d} />)}</tbody>
                     </table>
                   </div>
@@ -223,7 +265,7 @@ export default async function DonationsPage({
           ) : (
             <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-white">
               <table className="w-full text-left text-sm">
-                <TableHead />
+                {TableHead()}
                 <tbody>{donations.map((d) => <Row key={d.id} d={d} />)}</tbody>
               </table>
             </div>
