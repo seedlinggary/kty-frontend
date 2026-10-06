@@ -7,11 +7,14 @@ import { formatAdminDate } from "@/lib/admin-dates";
 import { markDonationPaidAction, cancelDonationAction } from "@/lib/actions/payment-admin";
 import { flagForFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import type { BillStatus, Prisma } from "@/lib/generated/prisma/client";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
-import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
-import { groupByPerson } from "@/lib/people-grouping";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
+import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
+import { groupByUser } from "@/lib/user-grouping";
 import { SortHeader } from "@/components/admin/sort-header";
 import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
+import { DoubleConfirmSubmitButton } from "@/components/admin/double-confirm-submit-button";
+import { SubmitButton } from "@/components/admin/submit-button";
+import { parseDateRangeFilter } from "@/lib/date-range";
 
 export const metadata: Metadata = { title: "Donations" };
 
@@ -21,7 +24,7 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-500",
 };
 
-type DonationRow = Prisma.DonationGetPayload<{ include: { person: { select: { id: true; fullName: true } } } }>;
+type DonationRow = Prisma.DonationGetPayload<{ include: { user: { select: { id: true; fullName: true } } } }>;
 
 const SORT_COLUMNS = ["date", "name", "purpose", "amount", "status"] as const;
 type SortKey = (typeof SORT_COLUMNS)[number];
@@ -29,19 +32,23 @@ type SortKey = (typeof SORT_COLUMNS)[number];
 export default async function DonationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; from?: string; to?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
   const statusFilter = sp.status ?? "ALL";
+  const from = sp.from ?? "";
+  const to = sp.to ?? "";
   const grouped = sp.view !== "raw";
   const sortKey: SortKey = SORT_COLUMNS.includes(sp.sort as SortKey) ? (sp.sort as SortKey) : "date";
   const dir: SortDir = sp.dir === "asc" ? "asc" : "desc";
 
   const where: Prisma.DonationWhereInput = {};
   if (statusFilter !== "ALL") where.status = statusFilter as BillStatus;
+  const dateFilter = parseDateRangeFilter(from, to);
+  if (dateFilter) where.createdAt = dateFilter;
   if (q) {
     where.OR = [
       { fullName: { contains: q, mode: "insensitive" } },
@@ -54,7 +61,7 @@ export default async function DonationsPage({
 
   const fetched = await prisma.donation.findMany({
     where,
-    include: { person: { select: { id: true, fullName: true } } },
+    include: { user: { select: { id: true, fullName: true } } },
   });
   const totalPaid = fetched.filter((d) => d.status === "PAID").reduce((sum, d) => sum + d.amountAgorot, 0);
 
@@ -78,10 +85,12 @@ export default async function DonationsPage({
   const redirectParams = new URLSearchParams();
   if (q) redirectParams.set("q", q);
   if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
+  if (from) redirectParams.set("from", from);
+  if (to) redirectParams.set("to", to);
   const redirectQs = redirectParams.toString();
   const redirectTo = `/admin/donations${redirectQs ? `?${redirectQs}` : ""}`;
 
-  const { groups, ungrouped } = groupByPerson(donations, (d) => d.person);
+  const { groups, ungrouped } = groupByUser(donations, (d) => d.user);
 
   function sortHref(column: SortKey) {
     return buildSortHref("/admin/donations", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
@@ -125,7 +134,7 @@ export default async function DonationsPage({
         <td className="px-4 py-3 font-medium text-ink">
           {d.fullName}
           <div>
-            <PersonBadge person={d.person} />
+            <UserBadge user={d.user} />
           </div>
         </td>
         <td className="px-4 py-3 text-ink/70">
@@ -146,26 +155,30 @@ export default async function DonationsPage({
             {d.status === "PENDING" && (
               <form action={markDonationPaidAction}>
                 <input type="hidden" name="id" value={d.id} />
-                <button type="submit" className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800">
+                <SubmitButton className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800">
                   Mark Paid
-                </button>
+                </SubmitButton>
               </form>
             )}
             {d.status !== "CANCELLED" && (
               <form action={cancelDonationAction}>
                 <input type="hidden" name="id" value={d.id} />
-                <button type="submit" className="text-xs font-medium text-red-600 hover:underline">
+                <DoubleConfirmSubmitButton
+                  confirmMessage={`Cancel ${d.fullName}'s donation? This only updates our own records.`}
+                  typeToConfirm="CANCEL"
+                  className="text-xs font-medium text-red-600 hover:underline"
+                >
                   Cancel
-                </button>
+                </DoubleConfirmSubmitButton>
               </form>
             )}
             {d.status === "PENDING" && (
               <form action={flagForFollowUpAction}>
                 <input type="hidden" name="kind" value="donation" />
                 <input type="hidden" name="id" value={d.id} />
-                <button type="submit" className="text-xs font-medium text-amber-700 hover:underline">
+                <SubmitButton className="text-xs font-medium text-amber-700 hover:underline">
                   Flag Failed
-                </button>
+                </SubmitButton>
               </form>
             )}
             {isSuperAdmin && (
@@ -188,7 +201,15 @@ export default async function DonationsPage({
             {donations.length} shown · {formatAgorotAsILS(totalPaid)} received
           </p>
         </div>
-        <GroupByPersonToggle />
+        <div className="flex items-center gap-3">
+          <GroupByUserToggle />
+          <a
+            href="/admin/donations/export"
+            className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
+          >
+            Export CSV
+          </a>
+        </div>
       </div>
 
       <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-4">
@@ -213,6 +234,14 @@ export default async function DonationsPage({
             <option value="CANCELLED">Cancelled</option>
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">From</label>
+          <input type="date" name="from" defaultValue={from} className="rounded-md border border-line px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">To</label>
+          <input type="date" name="to" defaultValue={to} className="rounded-md border border-line px-3 py-2 text-sm" />
+        </div>
         <button type="submit" className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent">
           Apply
         </button>
@@ -236,11 +265,11 @@ export default async function DonationsPage({
           <MergeForm redirectTo={redirectTo} />
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ person, items }) => (
-                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ user, items }) => (
+                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
-                      {person.fullName}
+                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
+                      {user.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} donation{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -252,7 +281,7 @@ export default async function DonationsPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}

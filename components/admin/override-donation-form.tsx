@@ -16,9 +16,11 @@ type Props = {
     purpose: string;
     status: "PENDING" | "PAID" | "CANCELLED";
   };
+  /** NedarimPlus's last confirmed charge for this donation, if any - null if nothing's been charged yet. */
+  lastConfirmedShekels: number | null;
 };
 
-export function OverrideDonationForm({ donationId, initial }: Props) {
+export function OverrideDonationForm({ donationId, initial, lastConfirmedShekels }: Props) {
   const router = useRouter();
   const [fullName, setFullName] = useState(initial.fullName);
   const [email, setEmail] = useState(initial.email);
@@ -31,9 +33,20 @@ export function OverrideDonationForm({ donationId, initial }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const amountDivergesFromNedarim = lastConfirmedShekels != null && amountShekels !== lastConfirmedShekels;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (amountDivergesFromNedarim) {
+      const ok = window.confirm(
+        `You're saving ₪${amountShekels} here, but NedarimPlus's last confirmed charge was ₪${lastConfirmedShekels}. ` +
+          "This only updates our own records - it does not change anything on NedarimPlus's side. Save anyway?"
+      );
+      if (!ok) return;
+    }
+
     startTransition(async () => {
       const result = await overrideDonationAction({
         id: donationId,
@@ -92,6 +105,14 @@ export function OverrideDonationForm({ donationId, initial }: Props) {
             onChange={(e) => setAmountShekels(Number(e.target.value) || 0)}
             className="w-full rounded-md border border-line px-3 py-2"
           />
+          {lastConfirmedShekels != null && (
+            <p className="mt-1 text-xs text-ink/50">NedarimPlus&apos;s last confirmed charge: ₪{lastConfirmedShekels}</p>
+          )}
+          {amountDivergesFromNedarim && (
+            <p className="mt-1 text-xs text-amber-700">
+              This is different from NedarimPlus&apos;s last confirmed amount - saving only updates our records.
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-ink">Status</label>

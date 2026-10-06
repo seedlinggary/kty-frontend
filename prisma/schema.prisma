@@ -29,15 +29,16 @@ model Admin {
   createdAt    DateTime  @default(now())
 }
 
-/// A real individual, who may have signed up / paid multiple separate times
-/// (NedarimPlus itself never de-duplicates - every signup becomes its own
-/// unrelated record there). Staff explicitly merge Bills/Donations/
-/// Memberships/PaymentLinks onto one Person from /admin/search, so the same
-/// person's whole history shows as one combined view instead of scattered
-/// unrelated entries. Nothing is ever required to have a Person - records
-/// stay fully usable unlinked, and deleting a Person only unlinks its
-/// records (never deletes them - see onDelete: SetNull below).
-model Person {
+/// A real individual (a congregant/payer - not an admin login, see Admin),
+/// who may have signed up / paid multiple separate times (NedarimPlus itself
+/// never de-duplicates - every signup becomes its own unrelated record
+/// there). Staff explicitly merge Bills/Donations/Memberships/PaymentLinks
+/// onto one User from /admin/search, so the same person's whole history
+/// shows as one combined view instead of scattered unrelated entries.
+/// Nothing is ever required to have a User - records stay fully usable
+/// unlinked, and deleting a User only unlinks its records (never deletes
+/// them - see onDelete: SetNull below).
+model User {
   id        String   @id @default(cuid())
   fullName  String
   email     String?
@@ -59,18 +60,18 @@ model Person {
 }
 
 model Holiday {
-  id                    String     @id @default(cuid())
-  slug                  String     @unique
-  nameEn                String
-  nameHe                String
-  descriptionEn         String?
-  descriptionHe         String?
-  memberPriceAgorot     Int
-  nonMemberPriceAgorot  Int
-  isOpen                Boolean    @default(true)
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  signups               Signup[]
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  nameEn               String
+  nameHe               String
+  descriptionEn        String?
+  descriptionHe        String?
+  memberPriceAgorot    Int
+  nonMemberPriceAgorot Int
+  isOpen               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  signups              Signup[]
 }
 
 enum BillStatus {
@@ -82,40 +83,40 @@ enum BillStatus {
 /// One payment: contact info + membership status + amount + NedarimPlus reference.
 /// Can cover seats for more than one holiday at once via its line items (Signup).
 model Bill {
-  id            String        @id @default(cuid())
-  referenceCode String        @unique
+  id            String            @id @default(cuid())
+  referenceCode String            @unique
   fullName      String
   phone         String
   email         String?
   isMember      Boolean
   notes         String?
   totalAgorot   Int
-  status        BillStatus    @default(PENDING)
-  createdBy     String        @default("public")
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  status        BillStatus        @default(PENDING)
+  createdBy     String            @default("public")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
   lineItems     Signup[]
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
-  person        Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
-  personId      String?
+  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
 
   @@index([status])
-  @@index([personId])
+  @@index([userId])
 }
 
 /// One line item within a Bill: seats for a single holiday.
 model Signup {
-  id          String   @id @default(cuid())
-  bill        Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  bill        Bill      @relation(fields: [billId], references: [id], onDelete: Cascade)
   billId      String
-  holiday     Holiday  @relation(fields: [holidayId], references: [id], onDelete: Restrict)
+  holiday     Holiday   @relation(fields: [holidayId], references: [id], onDelete: Restrict)
   holidayId   String
-  menSeats    Int      @default(0)
-  womenSeats  Int      @default(0)
+  menSeats    Int       @default(0)
+  womenSeats  Int       @default(0)
   totalAgorot Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   /// Soft delete: set when an admin removes this line item. Excluded from all
   /// admin views, dashboard totals, and CSV exports, but kept in the database.
   deletedAt   DateTime?
@@ -130,27 +131,39 @@ model Signup {
 /// resolved to). A Membership can accumulate many of these over time (one per
 /// monthly Keva charge); the others normally get just one.
 model Transaction {
-  id                    String       @id @default(cuid())
-  bill                  Bill?        @relation(fields: [billId], references: [id], onDelete: Cascade)
-  billId                String?
-  donation              Donation?    @relation(fields: [donationId], references: [id], onDelete: Cascade)
-  donationId            String?
-  membership            Membership?  @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  membershipId          String?
-  paymentLink           PaymentLink? @relation(fields: [paymentLinkId], references: [id], onDelete: Cascade)
-  paymentLinkId         String?
-  nedarimTransactionId  String?
-  confirmation          String?
-  amountAgorot          Int
-  source                String       @default("webhook")
-  rawPayload            Json?
-  receivedAt            DateTime     @default(now())
+  id                   String       @id @default(cuid())
+  bill                 Bill?        @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId               String?
+  donation             Donation?    @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  donationId           String?
+  membership           Membership?  @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  membershipId         String?
+  paymentLink          PaymentLink? @relation(fields: [paymentLinkId], references: [id], onDelete: Cascade)
+  paymentLinkId        String?
+  /// Unique (not just checked at the application layer) so two near-simultaneous
+  /// webhook deliveries for the same NedarimPlus charge - a confirmed-possible
+  /// retry pattern on timeout/5xx - can't both pass the pre-insert duplicate
+  /// check and double-insert the same charge. Nullable since a charge with no
+  /// TransactionId at all is still possible; Postgres allows any number of
+  /// NULLs under a unique constraint, so this never blocks those.
+  nedarimTransactionId String?      @unique
+  confirmation         String?
+  amountAgorot         Int
+  /// True when NedarimPlus's own history didn't report an amount for this
+  /// specific charge (confirmed to happen - their docs only promise a
+  /// blank amount for a cancelled/declined one, not a guarantee for every
+  /// success) and amountAgorot is our own fallback - the membership's own
+  /// recurring rate - rather than a real reported figure. Never true for a
+  /// webhook-sourced charge, which always carries a real reported Amount.
+  amountIsEstimated    Boolean      @default(false)
+  source               String       @default("webhook")
+  rawPayload           Json?
+  receivedAt           DateTime     @default(now())
 
   @@index([billId])
   @@index([donationId])
   @@index([membershipId])
   @@index([paymentLinkId])
-  @@index([nedarimTransactionId])
 }
 
 /// A one-time donation of any amount, paid via a NedarimPlus direct link (same
@@ -173,11 +186,11 @@ model Donation {
   updatedAt     DateTime          @updatedAt
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
-  person        Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
-  personId      String?
+  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
 
   @@index([status])
-  @@index([personId])
+  @@index([userId])
 }
 
 enum MembershipTier {
@@ -199,19 +212,25 @@ enum MembershipStatus {
 /// A recurring monthly membership due, charged via NedarimPlus's standing-order
 /// ("Keva") mechanism rather than a single payment.
 model Membership {
-  id             String             @id @default(cuid())
-  referenceCode  String             @unique
-  fullName       String
+  id                       String            @id @default(cuid())
+  referenceCode            String            @unique
+  fullName                 String
   /// Mandatory - the one reliable way to reach a member if a charge fails.
-  email          String
+  email                    String
   /// Not required, but always asked for - collected whenever given.
-  phone          String?
-  address        String?
-  city           String?
-  tier           MembershipTier
+  phone                    String?
+  address                  String?
+  city                     String?
+  tier                     MembershipTier
   /// Snapshot of the monthly amount at signup, so a later price change doesn't
   /// rewrite history for members who already signed up at the old rate.
-  monthlyAgorot  Int
+  monthlyAgorot            Int
+  /// True when this was imported from NedarimPlus and its standing-order
+  /// listing didn't report a usable Amount at all (confirmed to happen,
+  /// same unreliability as the per-charge Amount handled on Transaction) -
+  /// monthlyAgorot is a placeholder (0), not a real rate. Never set for a
+  /// publicly-signed-up membership, which always has a real chosen amount.
+  monthlyAgorotIsEstimated Boolean           @default(false)
   /// From NedarimPlus's standing-order report (KevaSuccess/KevaTashlumim) -
   /// only ever set for memberships imported from (or re-synced against) a
   /// pre-existing NedarimPlus standing order. nedarimPaymentsRemaining null
@@ -220,21 +239,30 @@ model Membership {
   /// directly for a specific standing order if this looks off.
   nedarimPaymentsMade      Int?
   nedarimPaymentsRemaining Int?
+  /// Set only by a real NedarimPlus DeleteKeva/DisableKeva API call (see
+  /// lib/nedarim-writes.ts) succeeding - never by anything local-only like
+  /// the Cancel button. The row itself is never deleted either way -
+  /// "deleted on NedarimPlus" is a fact to record, not a reason to lose the
+  /// record. nedarimDisabledAt clears back to null on a successful
+  /// EnableKevaNew; nedarimDeletedAt never clears (DeleteKeva is permanent
+  /// on NedarimPlus's side).
+  nedarimDeletedAt         DateTime?
+  nedarimDisabledAt        DateTime?
   /// Set once NedarimPlus's Keva-setup webhook confirms the standing order.
-  kevaId         String?            @unique
-  status         MembershipStatus   @default(PENDING)
-  nextChargeDate DateTime?
-  lastChargeAt   DateTime?
-  createdBy      String             @default("public")
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  transactions   Transaction[]
-  followUps      PaymentFollowUp[]
-  person         Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
-  personId       String?
+  kevaId                   String?           @unique
+  status                   MembershipStatus  @default(PENDING)
+  nextChargeDate           DateTime?
+  lastChargeAt             DateTime?
+  createdBy                String            @default("public")
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  transactions             Transaction[]
+  followUps                PaymentFollowUp[]
+  user                     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId                   String?
 
   @@index([status])
-  @@index([personId])
+  @@index([userId])
 }
 
 /// An admin-generated payment link for a predetermined, fixed amount - e.g. a
@@ -254,11 +282,11 @@ model PaymentLink {
   updatedAt     DateTime          @updatedAt
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
-  person        Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
-  personId      String?
+  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
 
   @@index([status])
-  @@index([personId])
+  @@index([userId])
 }
 
 enum FollowUpReason {
@@ -296,23 +324,23 @@ enum FollowUpStatus {
 /// this system existed). The external* fields carry everything needed to
 /// still email that person, straight from the parsed decline notification.
 model PaymentFollowUp {
-  id                   String         @id @default(cuid())
-  bill                 Bill?          @relation(fields: [billId], references: [id], onDelete: Cascade)
-  billId               String?
-  donation             Donation?      @relation(fields: [donationId], references: [id], onDelete: Cascade)
-  donationId           String?
-  membership           Membership?    @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  membershipId         String?
-  paymentLink          PaymentLink?   @relation(fields: [paymentLinkId], references: [id], onDelete: Cascade)
-  paymentLinkId        String?
-  reason               FollowUpReason
-  status               FollowUpStatus @default(OPEN)
-  notes                String?
-  emailsSentCount      Int            @default(0)
-  lastEmailSentAt      DateTime?
-  resolvedAt           DateTime?
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  bill            Bill?          @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId          String?
+  donation        Donation?      @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  donationId      String?
+  membership      Membership?    @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  membershipId    String?
+  paymentLink     PaymentLink?   @relation(fields: [paymentLinkId], references: [id], onDelete: Cascade)
+  paymentLinkId   String?
+  reason          FollowUpReason
+  status          FollowUpStatus @default(OPEN)
+  notes           String?
+  emailsSentCount Int            @default(0)
+  lastEmailSentAt DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   /// Set only when this follow-up isn't tied to any of the FKs above (a
   /// decline on something our system never created).
@@ -325,8 +353,8 @@ model PaymentFollowUp {
 
   /// Diagnostic detail from a parsed NedarimPlus decline email - kept
   /// regardless of whether this follow-up matched a known record.
-  failureReason        String?
-  cardLast4            String?
+  failureReason String?
+  cardLast4     String?
 
   @@index([billId])
   @@index([donationId])
@@ -342,23 +370,23 @@ model PaymentFollowUp {
 /// complete picture of everything coming through the Mosad, not just what our
 /// own forms initiated. Never auto-deleted; purely a record-keeping ledger.
 model ExternalTransaction {
-  id                    String   @id @default(cuid())
-  nedarimTransactionId  String?  @unique
-  amountAgorot          Int
-  clientName            String?
-  phone                 String?
-  email                 String?
-  groupe                String?
-  comments              String?
-  confirmation          String?
-  kevaId                String?
-  rawPayload            Json?
-  receivedAt            DateTime @default(now())
-  person                Person?  @relation(fields: [personId], references: [id], onDelete: SetNull)
-  personId              String?
+  id                   String   @id @default(cuid())
+  nedarimTransactionId String?  @unique
+  amountAgorot         Int
+  clientName           String?
+  phone                String?
+  email                String?
+  groupe               String?
+  comments             String?
+  confirmation         String?
+  kevaId               String?
+  rawPayload           Json?
+  receivedAt           DateTime @default(now())
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId               String?
 
   @@index([receivedAt])
-  @@index([personId])
+  @@index([userId])
 }
 
 enum FormFieldType {
@@ -419,9 +447,9 @@ model FormField {
   ///   independent of conditionMode (lets a field stay always-visible but change
   ///   its wording based on an earlier answer, e.g. "Husband's Name" -> "Your Name")
   conditionFieldId String?
-  conditionValue    String?
-  conditionMode     FieldConditionMode?
-  altLabel          String?
+  conditionValue   String?
+  conditionMode    FieldConditionMode?
+  altLabel         String?
 
   @@index([formId])
 }
@@ -435,23 +463,44 @@ model FormResponse {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  person    Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
-  personId  String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
 
   @@index([formId])
   @@index([deletedAt])
-  @@index([personId])
+  @@index([userId])
+}
+
+/// Every admin-initiated change to a payment-shaped record (override,
+/// cancel, reactivate, mark paid, signup correction) - who did it, when,
+/// and exactly what changed. Nothing here is ever edited or deleted after
+/// the fact; it's a one-way trail, not a system of record itself. A
+/// "system"-attributed entry means the webhook logged it, not an admin
+/// (e.g. NedarimPlus charging a membership that's marked Cancelled here -
+/// see the webhook handler).
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminEmail String
+  action     String
+  recordType String
+  recordId   String
+  /// { [field]: { before, after } }
+  changes    Json
+  createdAt  DateTime @default(now())
+
+  @@index([recordType, recordId])
+  @@index([createdAt])
 }
 
 model SiteSettings {
-  id              Int    @id @default(1)
-  aboutEn         String
-  aboutHe         String
-  contactPhone    String
-  contactEmail    String
-  address         String
-  serviceTimesEn  String?
-  serviceTimesHe  String?
-  heroTaglineEn   String
-  heroTaglineHe   String
+  id             Int     @id @default(1)
+  aboutEn        String
+  aboutHe        String
+  contactPhone   String
+  contactEmail   String
+  address        String
+  serviceTimesEn String?
+  serviceTimesHe String?
+  heroTaglineEn  String
+  heroTaglineHe  String
 }

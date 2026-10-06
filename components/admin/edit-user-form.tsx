@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updatePersonAction } from "@/lib/actions/people";
+import { updateUserAction } from "@/lib/actions/users";
 
 type Props = {
-  personId: string;
+  userId: string;
   initial: {
     fullName: string;
     email: string;
@@ -16,7 +16,7 @@ type Props = {
   };
 };
 
-export function EditPersonForm({ personId, initial }: Props) {
+export function EditUserForm({ userId, initial }: Props) {
   const router = useRouter();
   const [fullName, setFullName] = useState(initial.fullName);
   const [email, setEmail] = useState(initial.email);
@@ -33,7 +33,7 @@ export function EditPersonForm({ personId, initial }: Props) {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const result = await updatePersonAction({ id: personId, fullName, email, phone, address, city, notes });
+      const result = await updateUserAction({ id: userId, fullName, email, phone, address, city, notes });
       if (!result.ok) {
         setError(result.error);
         return;

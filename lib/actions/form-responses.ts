@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getFieldLabel, isAnswerEmpty, isFieldVisible } from "@/lib/forms";
+import { diffFields, recordAuditLog } from "@/lib/audit-log";
 
 export type SubmitFormResponseInput = {
   formId: string;
@@ -73,6 +74,17 @@ export async function updateFormResponse(
     where: { id: responseId },
     data: { answers: savedAnswers as object },
   });
+  // JSON blobs compare by reference under diffFields' !== check, so stringify
+  // first - otherwise every save would log as "changed" even when nothing
+  // actually was.
+  if (JSON.stringify(response.answers) !== JSON.stringify(savedAnswers)) {
+    await recordAuditLog({
+      action: "edit",
+      recordType: "formResponse",
+      recordId: responseId,
+      changes: diffFields({ answers: response.answers }, { answers: savedAnswers }),
+    });
+  }
 
   revalidatePath(`/admin/forms/${response.formId}/responses`);
   return { ok: true };
@@ -83,6 +95,12 @@ export async function deleteFormResponseAction(formData: FormData) {
   const response = await prisma.formResponse.update({
     where: { id: responseId },
     data: { deletedAt: new Date() },
+  });
+  await recordAuditLog({
+    action: "soft_delete",
+    recordType: "formResponse",
+    recordId: responseId,
+    changes: diffFields({ deletedAt: null }, { deletedAt: response.deletedAt }),
   });
   revalidatePath(`/admin/forms/${response.formId}/responses`);
   revalidatePath(`/admin/forms/${response.formId}`);

@@ -9,10 +9,14 @@ import { markPaymentLinkPaidAction } from "@/lib/actions/payment-admin";
 import { cancelPaymentLinkAction } from "@/lib/actions/payment-links";
 import { flagForFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import { CopyLinkButton } from "@/components/admin/copy-link-button";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
-import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
-import { groupByPerson } from "@/lib/people-grouping";
-import type { Prisma } from "@/lib/generated/prisma/client";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
+import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
+import { groupByUser } from "@/lib/user-grouping";
+import type { BillStatus, Prisma } from "@/lib/generated/prisma/client";
+import { DoubleConfirmSubmitButton } from "@/components/admin/double-confirm-submit-button";
+import { SubmitButton } from "@/components/admin/submit-button";
+import { SortHeader } from "@/components/admin/sort-header";
+import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 
 export const metadata: Metadata = { title: "Payment Links" };
 
@@ -22,40 +26,89 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-500",
 };
 
-type PaymentLinkRow = Prisma.PaymentLinkGetPayload<{ include: { person: { select: { id: true; fullName: true } } } }>;
+type PaymentLinkRow = Prisma.PaymentLinkGetPayload<{ include: { user: { select: { id: true; fullName: true } } } }>;
 
-function TableHead() {
-  return (
-    <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
-      <tr>
-        <th className="px-4 py-3" />
-        <th className="px-4 py-3">Label</th>
-        <th className="px-4 py-3">Contact</th>
-        <th className="px-4 py-3">Amount</th>
-        <th className="px-4 py-3">Status</th>
-        <th className="px-4 py-3">Reference</th>
-        <th className="px-4 py-3">Actions</th>
-      </tr>
-    </thead>
-  );
-}
+const SORT_COLUMNS = ["date", "label", "amount", "status"] as const;
+type SortKey = (typeof SORT_COLUMNS)[number];
 
 export default async function PaymentLinksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; mergeError?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
   const sp = await searchParams;
+  const q = sp.q?.trim() ?? "";
+  const statusFilter = sp.status ?? "ALL";
   const grouped = sp.view !== "raw";
+  const sortKey: SortKey = SORT_COLUMNS.includes(sp.sort as SortKey) ? (sp.sort as SortKey) : "date";
+  const dir: SortDir = sp.dir === "asc" ? "asc" : "desc";
 
-  const links = await prisma.paymentLink.findMany({
-    include: { person: { select: { id: true, fullName: true } } },
-    orderBy: { createdAt: "desc" },
+  const where: Prisma.PaymentLinkWhereInput = {};
+  if (statusFilter !== "ALL") where.status = statusFilter as BillStatus;
+  if (q) {
+    where.OR = [
+      { label: { contains: q, mode: "insensitive" } },
+      { fullName: { contains: q, mode: "insensitive" } },
+      { email: { contains: q, mode: "insensitive" } },
+      { phone: { contains: q, mode: "insensitive" } },
+    ];
+  }
+
+  const fetched = await prisma.paymentLink.findMany({
+    where,
+    include: { user: { select: { id: true, fullName: true } } },
   });
 
-  const { groups, ungrouped } = groupByPerson(links, (l) => l.person);
+  const direction = dir === "asc" ? 1 : -1;
+  const links = [...fetched].sort((a, b) => {
+    switch (sortKey) {
+      case "label":
+        return direction * a.label.localeCompare(b.label);
+      case "amount":
+        return direction * (a.amountAgorot - b.amountAgorot);
+      case "status":
+        return direction * a.status.localeCompare(b.status);
+      case "date":
+      default:
+        return direction * (a.createdAt.getTime() - b.createdAt.getTime());
+    }
+  });
+
+  const redirectParams = new URLSearchParams();
+  if (q) redirectParams.set("q", q);
+  if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
+  const redirectQs = redirectParams.toString();
+  const redirectTo = `/admin/payment-links${redirectQs ? `?${redirectQs}` : ""}`;
+
+  const { groups, ungrouped } = groupByUser(links, (l) => l.user);
+
+  function sortHref(column: SortKey) {
+    return buildSortHref("/admin/payment-links", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
+  }
+
+  function TableHead() {
+    return (
+      <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
+        <tr>
+          <th className="px-4 py-3" />
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("label")} isActive={sortKey === "label"} dir={dir}>Label</SortHeader>
+          </th>
+          <th className="px-4 py-3">Contact</th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("amount")} isActive={sortKey === "amount"} dir={dir}>Amount</SortHeader>
+          </th>
+          <th className="px-4 py-3">
+            <SortHeader href={sortHref("status")} isActive={sortKey === "status"} dir={dir}>Status</SortHeader>
+          </th>
+          <th className="px-4 py-3">Reference</th>
+          <th className="px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+    );
+  }
 
   function Row({ link }: { link: PaymentLinkRow }) {
     const paymentLink =
@@ -79,7 +132,7 @@ export default async function PaymentLinksPage({
         <td className="px-4 py-3 font-medium text-ink">
           {link.label}
           <div>
-            <PersonBadge person={link.person} />
+            <UserBadge user={link.user} />
           </div>
         </td>
         <td className="px-4 py-3 text-ink/70">
@@ -97,22 +150,28 @@ export default async function PaymentLinksPage({
             {link.status === "PENDING" && (
               <form action={markPaymentLinkPaidAction}>
                 <input type="hidden" name="id" value={link.id} />
-                <button type="submit" className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800">
+                <SubmitButton className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white hover:bg-green-800">
                   Mark Paid
-                </button>
+                </SubmitButton>
               </form>
             )}
             {link.status !== "CANCELLED" && isSuperAdmin && (
               <form action={cancelPaymentLinkAction}>
                 <input type="hidden" name="id" value={link.id} />
-                <button type="submit" className="text-xs font-medium text-red-600 hover:underline">Cancel</button>
+                <DoubleConfirmSubmitButton
+                  confirmMessage={`Cancel "${link.label}"? This only updates our own records.`}
+                  typeToConfirm="CANCEL"
+                  className="text-xs font-medium text-red-600 hover:underline"
+                >
+                  Cancel
+                </DoubleConfirmSubmitButton>
               </form>
             )}
             {link.status === "PENDING" && (
               <form action={flagForFollowUpAction}>
                 <input type="hidden" name="kind" value="paymentLink" />
                 <input type="hidden" name="id" value={link.id} />
-                <button type="submit" className="text-xs font-medium text-amber-700 hover:underline">Flag Failed</button>
+                <SubmitButton className="text-xs font-medium text-amber-700 hover:underline">Flag Failed</SubmitButton>
               </form>
             )}
             {isSuperAdmin && (
@@ -132,12 +191,20 @@ export default async function PaymentLinksPage({
         <div>
           <h1 className="font-serif text-2xl font-semibold text-ink">Payment Links</h1>
           <p className="mt-1 text-sm text-ink/60">
-            Fixed, predetermined-amount links - for a pledge, an event fee, or correcting an
-            underpayment - so someone can just pay that exact amount. Creating one requires a super
-            admin.
+            {links.length} shown · Fixed, predetermined-amount links - for a pledge, an event fee, or
+            correcting an underpayment - so someone can just pay that exact amount. Creating one
+            requires a super admin.
           </p>
         </div>
-        <GroupByPersonToggle />
+        <div className="flex items-center gap-3">
+          <GroupByUserToggle />
+          <a
+            href="/admin/payment-links/export"
+            className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
+          >
+            Export CSV
+          </a>
+        </div>
       </div>
 
       {isSuperAdmin ? (
@@ -150,6 +217,33 @@ export default async function PaymentLinksPage({
           ones below.
         </p>
       )}
+
+      <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-4">
+        <input type="hidden" name="sort" value={sortKey} />
+        <input type="hidden" name="dir" value={dir} />
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">Search</label>
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="Label, name, email, or phone"
+            className="w-56 rounded-md border border-line px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">Status</label>
+          <select name="status" defaultValue={statusFilter} className="rounded-md border border-line px-3 py-2 text-sm">
+            <option value="ALL">All statuses</option>
+            <option value="PENDING">Pending</option>
+            <option value="PAID">Paid</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+        </div>
+        <button type="submit" className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent">
+          Apply
+        </button>
+      </form>
 
       <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
@@ -166,14 +260,14 @@ export default async function PaymentLinksPage({
         </div>
       ) : (
         <>
-          <MergeForm redirectTo="/admin/payment-links" />
+          <MergeForm redirectTo={redirectTo} />
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ person, items }) => (
-                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ user, items }) => (
+                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
-                      {person.fullName}
+                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
+                      {user.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} link{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -185,7 +279,7 @@ export default async function PaymentLinksPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       <TableHead />

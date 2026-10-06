@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { agorotToShekels } from "@/lib/money";
 import { OverridePaymentLinkForm } from "@/components/admin/override-payment-link-form";
+import { AuditHistory } from "@/components/admin/audit-history";
 
 export const metadata: Metadata = { title: "Edit Payment Link" };
 
@@ -14,6 +15,16 @@ export default async function EditPaymentLinkPage({ params }: { params: Promise<
   const { id } = await params;
   const link = await prisma.paymentLink.findUnique({ where: { id } });
   if (!link) notFound();
+
+  const lastConfirmed = await prisma.transaction.findFirst({
+    where: { paymentLinkId: id },
+    orderBy: { receivedAt: "desc" },
+  });
+  const auditEntries = await prisma.adminAuditLog.findMany({
+    where: { recordType: "paymentLink", recordId: id },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
 
   return (
     <div>
@@ -30,8 +41,10 @@ export default async function EditPaymentLinkPage({ params }: { params: Promise<
             amountShekels: agorotToShekels(link.amountAgorot),
             status: link.status,
           }}
+          lastConfirmedShekels={lastConfirmed ? agorotToShekels(lastConfirmed.amountAgorot) : null}
         />
       </div>
+      <AuditHistory entries={auditEntries} />
     </div>
   );
 }

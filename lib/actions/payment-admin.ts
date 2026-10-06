@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth-helpers";
+import { diffFields, recordAuditLog } from "@/lib/audit-log";
 
 export type PayableKind = "donation" | "membership" | "paymentLink";
 
@@ -24,24 +25,54 @@ export async function markDonationPaidAction(formData: FormData) {
       data: { donationId: id, amountAgorot: donation.amountAgorot, source: "manual" },
     }),
   ]);
+  await recordAuditLog({
+    action: "mark_paid",
+    recordType: "donation",
+    recordId: id,
+    changes: diffFields(donation, { status: "PAID" }),
+  });
   await revalidateAll();
 }
 
 export async function cancelDonationAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
+  const donation = await prisma.donation.findUnique({ where: { id } });
+  if (!donation) return;
   await prisma.donation.update({ where: { id }, data: { status: "CANCELLED" } });
+  await recordAuditLog({
+    action: "cancel",
+    recordType: "donation",
+    recordId: id,
+    changes: diffFields(donation, { status: "CANCELLED" }),
+  });
   await revalidateAll();
 }
 
 export async function cancelMembershipAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
+  const membership = await prisma.membership.findUnique({ where: { id } });
+  if (!membership) return;
   await prisma.membership.update({ where: { id }, data: { status: "CANCELLED" } });
+  await recordAuditLog({
+    action: "cancel",
+    recordType: "membership",
+    recordId: id,
+    changes: diffFields(membership, { status: "CANCELLED" }),
+  });
   await revalidateAll();
 }
 
 export async function reactivateMembershipAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
+  const membership = await prisma.membership.findUnique({ where: { id } });
+  if (!membership) return;
   await prisma.membership.update({ where: { id }, data: { status: "ACTIVE" } });
+  await recordAuditLog({
+    action: "reactivate",
+    recordType: "membership",
+    recordId: id,
+    changes: diffFields(membership, { status: "ACTIVE" }),
+  });
   await revalidateAll();
 }
 
@@ -55,6 +86,12 @@ export async function markPaymentLinkPaidAction(formData: FormData) {
       data: { paymentLinkId: id, amountAgorot: link.amountAgorot, source: "manual" },
     }),
   ]);
+  await recordAuditLog({
+    action: "mark_paid",
+    recordType: "paymentLink",
+    recordId: id,
+    changes: diffFields(link, { status: "PAID" }),
+  });
   await revalidateAll();
 }
 
@@ -80,19 +117,22 @@ export async function overrideDonationAction(input: OverrideDonationInput): Prom
   const email = input.email.trim();
   if (!email) return { ok: false, error: "Email is required." };
 
-  await prisma.donation.update({
-    where: { id: input.id },
-    data: {
-      fullName: input.fullName.trim(),
-      email,
-      phone: input.phone?.trim() || null,
-      address: input.address?.trim() || null,
-      city: input.city?.trim() || null,
-      amountAgorot: Math.round(input.amountShekels * 100),
-      purpose: input.purpose?.trim() || null,
-      status: input.status,
-    },
-  });
+  const before = await prisma.donation.findUnique({ where: { id: input.id } });
+  if (!before) return { ok: false, error: "Donation not found." };
+
+  const after = {
+    fullName: input.fullName.trim(),
+    email,
+    phone: input.phone?.trim() || null,
+    address: input.address?.trim() || null,
+    city: input.city?.trim() || null,
+    amountAgorot: Math.round(input.amountShekels * 100),
+    purpose: input.purpose?.trim() || null,
+    status: input.status,
+  };
+
+  await prisma.donation.update({ where: { id: input.id }, data: after });
+  await recordAuditLog({ action: "override", recordType: "donation", recordId: input.id, changes: diffFields(before, after) });
   await revalidateAll();
   return { ok: true };
 }
@@ -116,18 +156,21 @@ export async function overrideMembershipAction(input: OverrideMembershipInput): 
   const email = input.email.trim();
   if (!email) return { ok: false, error: "Email is required." };
 
-  await prisma.membership.update({
-    where: { id: input.id },
-    data: {
-      fullName: input.fullName.trim(),
-      email,
-      phone: input.phone?.trim() || null,
-      address: input.address?.trim() || null,
-      city: input.city?.trim() || null,
-      monthlyAgorot: Math.round(input.monthlyShekels * 100),
-      status: input.status,
-    },
-  });
+  const before = await prisma.membership.findUnique({ where: { id: input.id } });
+  if (!before) return { ok: false, error: "Membership not found." };
+
+  const after = {
+    fullName: input.fullName.trim(),
+    email,
+    phone: input.phone?.trim() || null,
+    address: input.address?.trim() || null,
+    city: input.city?.trim() || null,
+    monthlyAgorot: Math.round(input.monthlyShekels * 100),
+    status: input.status,
+  };
+
+  await prisma.membership.update({ where: { id: input.id }, data: after });
+  await recordAuditLog({ action: "override", recordType: "membership", recordId: input.id, changes: diffFields(before, after) });
   await revalidateAll();
   return { ok: true };
 }
@@ -147,17 +190,20 @@ export async function overridePaymentLinkAction(input: OverridePaymentLinkInput)
   const auth = await requireSuperAdmin();
   if (!auth.ok) return { ok: false, error: auth.error };
 
-  await prisma.paymentLink.update({
-    where: { id: input.id },
-    data: {
-      label: input.label.trim(),
-      fullName: input.fullName?.trim() || null,
-      phone: input.phone?.trim() || null,
-      email: input.email?.trim() || null,
-      amountAgorot: Math.round(input.amountShekels * 100),
-      status: input.status,
-    },
-  });
+  const before = await prisma.paymentLink.findUnique({ where: { id: input.id } });
+  if (!before) return { ok: false, error: "Payment link not found." };
+
+  const after = {
+    label: input.label.trim(),
+    fullName: input.fullName?.trim() || null,
+    phone: input.phone?.trim() || null,
+    email: input.email?.trim() || null,
+    amountAgorot: Math.round(input.amountShekels * 100),
+    status: input.status,
+  };
+
+  await prisma.paymentLink.update({ where: { id: input.id }, data: after });
+  await recordAuditLog({ action: "override", recordType: "paymentLink", recordId: input.id, changes: diffFields(before, after) });
   await revalidateAll();
   return { ok: true };
 }

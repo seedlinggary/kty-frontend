@@ -6,9 +6,9 @@ import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
 import { SortHeader } from "@/components/admin/sort-header";
 import { deleteFormResponseAction } from "@/lib/actions/form-responses";
 import { formatAnswerForDisplay, answerMatchesSearch, getFieldOptions, isChoiceType } from "@/lib/forms";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
-import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
-import { groupByPerson } from "@/lib/people-grouping";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
+import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
+import { groupByUser } from "@/lib/user-grouping";
 
 export async function generateMetadata({
   params,
@@ -53,7 +53,7 @@ export default async function FormResponsesPage({
       responses: {
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
-        include: { person: { select: { id: true, fullName: true } } },
+        include: { user: { select: { id: true, fullName: true } } },
       },
     },
   });
@@ -108,7 +108,7 @@ export default async function FormResponsesPage({
   const redirectQs = redirectParams.toString();
   const redirectTo = `/admin/forms/${form.id}/responses${redirectQs ? `?${redirectQs}` : ""}`;
 
-  const { groups, ungrouped } = groupByPerson(sorted, (r) => r.person);
+  const { groups, ungrouped } = groupByUser(sorted, (r) => r.user);
 
   function TableHead() {
     return (
@@ -153,7 +153,7 @@ export default async function FormResponsesPage({
         </td>
         <td className="whitespace-nowrap px-4 py-3 text-xs text-ink/60">
           {response.createdAt.toLocaleDateString()}
-          <div><PersonBadge person={response.person} /></div>
+          <div><UserBadge user={response.user} /></div>
         </td>
         {form!.fields.map((field) => (
           <td key={field.id} className="max-w-[16rem] px-4 py-3 text-ink/80">
@@ -197,7 +197,7 @@ export default async function FormResponsesPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <GroupByPersonToggle />
+          <GroupByUserToggle />
           <a
             href={`/admin/forms/${form.id}/responses/export`}
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -284,11 +284,11 @@ export default async function FormResponsesPage({
           <MergeForm redirectTo={redirectTo} />
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ person, items }) => (
-                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ user, items }) => (
+                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
-                      {person.fullName}
+                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
+                      {user.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} response{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -300,7 +300,7 @@ export default async function FormResponsesPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}

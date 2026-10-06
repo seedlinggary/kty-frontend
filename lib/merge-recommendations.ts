@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { extractFormResponseIdentity } from "@/lib/form-response-identity";
-import type { ItemKind } from "@/lib/actions/people";
+import type { ItemKind } from "@/lib/actions/users";
 
 type RecommendationItem = {
   kind: ItemKind;
   id: string;
   label: string;
-  personId: string | null;
-  personName: string | null;
+  userId: string | null;
+  userName: string | null;
 };
 
 export type Recommendation = {
@@ -15,7 +15,7 @@ export type Recommendation = {
   matchedOn: ("email" | "phone")[];
   sharedValues: string[];
   items: RecommendationItem[];
-  existingPersonNames: string[];
+  existingUserNames: string[];
 };
 
 // A value shared by more than this many records is more likely a shared
@@ -39,8 +39,8 @@ type RawItem = {
   label: string;
   email: string | null;
   phone: string | null;
-  personId: string | null;
-  personName: string | null;
+  userId: string | null;
+  userName: string | null;
 };
 
 class UnionFind {
@@ -63,32 +63,32 @@ class UnionFind {
 
 /**
  * Scans every mergeable record type for ones sharing a normalized email or
- * phone number that aren't already combined onto the same Person, and
+ * phone number that aren't already combined onto the same User, and
  * recommends combining them. Doesn't touch anything by itself - staff act
- * on a recommendation with the same "Combine Into One Person" action used
+ * on a recommendation with the same "Combine Into One User" action used
  * everywhere else, or ignore it if it's a false match (e.g. a shared office
  * contact rather than the same individual).
  */
 export async function findMergeRecommendations(): Promise<Recommendation[]> {
   const [bills, donations, memberships, paymentLinks, externalTransactions, formResponses] = await Promise.all([
     prisma.bill.findMany({
-      include: { person: { select: { fullName: true } } },
+      include: { user: { select: { fullName: true } } },
     }),
     prisma.donation.findMany({
-      include: { person: { select: { fullName: true } } },
+      include: { user: { select: { fullName: true } } },
     }),
     prisma.membership.findMany({
-      include: { person: { select: { fullName: true } } },
+      include: { user: { select: { fullName: true } } },
     }),
     prisma.paymentLink.findMany({
-      include: { person: { select: { fullName: true } } },
+      include: { user: { select: { fullName: true } } },
     }),
     prisma.externalTransaction.findMany({
-      include: { person: { select: { fullName: true } } },
+      include: { user: { select: { fullName: true } } },
     }),
     prisma.formResponse.findMany({
       where: { deletedAt: null },
-      include: { form: { include: { fields: true } }, person: { select: { fullName: true } } },
+      include: { form: { include: { fields: true } }, user: { select: { fullName: true } } },
     }),
   ]);
 
@@ -99,8 +99,8 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
       label: `${b.fullName} — Holiday Seats (${b.status})`,
       email: b.email,
       phone: b.phone,
-      personId: b.personId,
-      personName: b.person?.fullName ?? null,
+      userId: b.userId,
+      userName: b.user?.fullName ?? null,
     })),
     ...donations.map((d) => ({
       kind: "donation" as ItemKind,
@@ -108,8 +108,8 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
       label: `${d.fullName} — Donation (${d.status})`,
       email: d.email,
       phone: d.phone,
-      personId: d.personId,
-      personName: d.person?.fullName ?? null,
+      userId: d.userId,
+      userName: d.user?.fullName ?? null,
     })),
     ...memberships.map((m) => ({
       kind: "membership" as ItemKind,
@@ -117,8 +117,8 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
       label: `${m.fullName} — Membership (${m.status.replace("_", " ")})`,
       email: m.email,
       phone: m.phone,
-      personId: m.personId,
-      personName: m.person?.fullName ?? null,
+      userId: m.userId,
+      userName: m.user?.fullName ?? null,
     })),
     ...paymentLinks.map((l) => ({
       kind: "paymentLink" as ItemKind,
@@ -126,8 +126,8 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
       label: `${l.fullName || l.label} — Payment Link "${l.label}" (${l.status})`,
       email: l.email,
       phone: l.phone,
-      personId: l.personId,
-      personName: l.person?.fullName ?? null,
+      userId: l.userId,
+      userName: l.user?.fullName ?? null,
     })),
     ...externalTransactions.map((t) => ({
       kind: "externalTransaction" as ItemKind,
@@ -135,8 +135,8 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
       label: `${t.clientName || "Unknown"} — Other Transaction`,
       email: t.email,
       phone: t.phone,
-      personId: t.personId,
-      personName: t.person?.fullName ?? null,
+      userId: t.userId,
+      userName: t.user?.fullName ?? null,
     })),
     ...formResponses.map((r) => {
       const identity = extractFormResponseIdentity(
@@ -150,8 +150,8 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
         label: `${identity.fullName} — Form Submission (${r.form.title})`,
         email: identity.email,
         phone: identity.phone,
-        personId: r.personId,
-        personName: r.person?.fullName ?? null,
+        userId: r.userId,
+        userName: r.user?.fullName ?? null,
       };
     }),
   ];
@@ -187,10 +187,10 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
     if (idxs.length < 2 || idxs.length > MAX_CLUSTER_SIZE) continue;
 
     const clusterItems = idxs.map((i) => items[i]);
-    const distinctPersonIds = new Set(clusterItems.filter((it) => it.personId).map((it) => it.personId!));
+    const distinctUserIds = new Set(clusterItems.filter((it) => it.userId).map((it) => it.userId!));
     // Already fully resolved: every item in this cluster already belongs to
-    // the same single Person - nothing to recommend.
-    if (distinctPersonIds.size === 1 && clusterItems.every((it) => it.personId)) continue;
+    // the same single User - nothing to recommend.
+    if (distinctUserIds.size === 1 && clusterItems.every((it) => it.userId)) continue;
 
     const matchedOn = new Set<"email" | "phone">();
     const sharedValues = new Set<string>();
@@ -222,10 +222,10 @@ export async function findMergeRecommendations(): Promise<Recommendation[]> {
         kind: it.kind,
         id: it.id,
         label: it.label,
-        personId: it.personId,
-        personName: it.personName,
+        userId: it.userId,
+        userName: it.userName,
       })),
-      existingPersonNames: Array.from(new Set(clusterItems.filter((it) => it.personName).map((it) => it.personName!))),
+      existingUserNames: Array.from(new Set(clusterItems.filter((it) => it.userName).map((it) => it.userName!))),
     });
   }
 

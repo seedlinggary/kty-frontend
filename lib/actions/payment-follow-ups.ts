@@ -6,6 +6,7 @@ import { buildPaymentLink, buildRecurringPaymentLink, extractReferenceFromCommen
 import { sendEmail, buildPaymentFollowUpEmail } from "@/lib/email";
 import { parseNedarimFailureEmail, looksLikeNedarimFailureEmail } from "@/lib/nedarim-failure-email";
 import { generateBillId } from "@/lib/billid";
+import { diffFields, recordAuditLog } from "@/lib/audit-log";
 import type { PaymentFollowUp } from "@/lib/generated/prisma/client";
 
 const SHUL_NAME_EN = "Kehillas Tiferes Yisroel";
@@ -225,16 +226,32 @@ export async function sendAllFollowUpEmailsAction(): Promise<SendAllFollowUpsRes
 
 export async function resolveFollowUpAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
+  const before = await prisma.paymentFollowUp.findUnique({ where: { id } });
+  if (!before) return;
   await prisma.paymentFollowUp.update({
     where: { id },
     data: { status: "RESOLVED", resolvedAt: new Date() },
+  });
+  await recordAuditLog({
+    action: "resolve_follow_up",
+    recordType: "paymentFollowUp",
+    recordId: id,
+    changes: diffFields(before, { status: "RESOLVED" }),
   });
   revalidatePath("/admin/payment-follow-ups");
 }
 
 export async function dismissFollowUpAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
+  const before = await prisma.paymentFollowUp.findUnique({ where: { id } });
+  if (!before) return;
   await prisma.paymentFollowUp.update({ where: { id }, data: { status: "DISMISSED" } });
+  await recordAuditLog({
+    action: "dismiss_follow_up",
+    recordType: "paymentFollowUp",
+    recordId: id,
+    changes: diffFields(before, { status: "DISMISSED" }),
+  });
   revalidatePath("/admin/payment-follow-ups");
 }
 
@@ -318,14 +335,17 @@ export async function importFailureEmailAction(rawText: string): Promise<ImportF
     notes: `Imported from a NedarimPlus decline email${parsed.orderNumber ? ` (order ${parsed.orderNumber})` : ""}.`,
   };
 
+  let followUpId: string;
   if (link) {
     const existing = await prisma.paymentFollowUp.findFirst({
       where: { ...link, status: { in: ["OPEN", "EMAIL_SENT"] } },
     });
     if (existing) {
       await prisma.paymentFollowUp.update({ where: { id: existing.id }, data: diagnostics });
+      followUpId = existing.id;
     } else {
-      await prisma.paymentFollowUp.create({ data: { ...link, ...diagnostics } });
+      const created = await prisma.paymentFollowUp.create({ data: { ...link, ...diagnostics } });
+      followUpId = created.id;
     }
   } else {
     const existing = parsed.orderNumber
@@ -344,10 +364,19 @@ export async function importFailureEmailAction(rawText: string): Promise<ImportF
     };
     if (existing) {
       await prisma.paymentFollowUp.update({ where: { id: existing.id }, data: standaloneData });
+      followUpId = existing.id;
     } else {
-      await prisma.paymentFollowUp.create({ data: standaloneData });
+      const created = await prisma.paymentFollowUp.create({ data: standaloneData });
+      followUpId = created.id;
     }
   }
+
+  await recordAuditLog({
+    action: "import_failure_email",
+    recordType: "paymentFollowUp",
+    recordId: followUpId,
+    changes: diffFields({}, { matched, failureReason: parsed.failureReason, cardLast4: parsed.cardLast4 }),
+  });
 
   revalidatePath("/admin/payment-follow-ups");
   return { ok: true, matched, name, amountAgorot: parsed.amountAgorot };
@@ -374,13 +403,23 @@ export async function flagForFollowUpAction(formData: FormData) {
   const existing = await prisma.paymentFollowUp.findFirst({
     where: { ...link, status: { in: ["OPEN", "EMAIL_SENT"] } },
   });
+  let followUpId: string;
   if (existing) {
     await prisma.paymentFollowUp.update({ where: { id: existing.id }, data: { notes } });
+    followUpId = existing.id;
   } else {
-    await prisma.paymentFollowUp.create({
+    const created = await prisma.paymentFollowUp.create({
       data: { ...link, reason: "MANUAL", notes },
     });
+    followUpId = created.id;
   }
+
+  await recordAuditLog({
+    action: "flag_for_follow_up",
+    recordType: kind,
+    recordId: id,
+    changes: diffFields({}, { followUpId, notes }),
+  });
 
   revalidatePath("/admin/payment-follow-ups");
 }

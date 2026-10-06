@@ -14,9 +14,11 @@ type Props = {
     amountShekels: number;
     status: "PENDING" | "PAID" | "CANCELLED";
   };
+  /** NedarimPlus's last confirmed charge for this link, if any. */
+  lastConfirmedShekels: number | null;
 };
 
-export function OverridePaymentLinkForm({ paymentLinkId, initial }: Props) {
+export function OverridePaymentLinkForm({ paymentLinkId, initial, lastConfirmedShekels }: Props) {
   const router = useRouter();
   const [label, setLabel] = useState(initial.label);
   const [fullName, setFullName] = useState(initial.fullName);
@@ -27,9 +29,20 @@ export function OverridePaymentLinkForm({ paymentLinkId, initial }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const amountDivergesFromNedarim = lastConfirmedShekels != null && amountShekels !== lastConfirmedShekels;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (amountDivergesFromNedarim) {
+      const ok = window.confirm(
+        `You're saving ₪${amountShekels} here, but NedarimPlus's last confirmed charge was ₪${lastConfirmedShekels}. ` +
+          "This only updates our own records. Save anyway?"
+      );
+      if (!ok) return;
+    }
+
     startTransition(async () => {
       const result = await overridePaymentLinkAction({ id: paymentLinkId, label, fullName, phone, email, amountShekels, status });
       if (!result.ok) {
@@ -63,6 +76,14 @@ export function OverridePaymentLinkForm({ paymentLinkId, initial }: Props) {
         <div>
           <label className="mb-1 block text-sm font-medium text-ink">Amount (₪)</label>
           <input type="number" min={0} step="0.01" value={amountShekels} onChange={(e) => setAmountShekels(Number(e.target.value) || 0)} className="w-full rounded-md border border-line px-3 py-2" />
+          {lastConfirmedShekels != null && (
+            <p className="mt-1 text-xs text-ink/50">NedarimPlus&apos;s last confirmed charge: ₪{lastConfirmedShekels}</p>
+          )}
+          {amountDivergesFromNedarim && (
+            <p className="mt-1 text-xs text-amber-700">
+              This is different from NedarimPlus&apos;s last confirmed amount - saving only updates our records.
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-ink">Status</label>

@@ -15,7 +15,7 @@ function findByLabel(answers: Record<string, unknown>, fields: FieldLike[], keyw
  * A FormResponse has no fixed name/email/phone columns - its answers are a
  * JSON blob keyed by dynamic FormField ids. Best-effort: look at the form's
  * own field labels for anything that sounds like a name/email/phone/address
- * field and pull the answer from there. Shared between the Person-merge
+ * field and pull the answer from there. Shared between the User-merge
  * action (one response at a time) and the duplicate-recommendation scan
  * (many at once, already loaded) so both agree on the same guess.
  */

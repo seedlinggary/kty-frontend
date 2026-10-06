@@ -6,6 +6,7 @@ import { formatAgorotAsILS } from "@/lib/money";
 import { buildPaymentLink } from "@/lib/nedarim";
 import { CopyLinkButton } from "@/components/admin/copy-link-button";
 import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
+import { DoubleConfirmSubmitButton } from "@/components/admin/double-confirm-submit-button";
 import {
   markSignupPaidAction,
   cancelSignupAction,
@@ -13,9 +14,9 @@ import {
   deleteSignupLineItemAction,
 } from "@/lib/actions/signup-admin";
 import type { Prisma, BillStatus } from "@/lib/generated/prisma/client";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
-import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
-import { groupByPerson } from "@/lib/people-grouping";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
+import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
+import { groupByUser } from "@/lib/user-grouping";
 
 export async function generateMetadata({
   params,
@@ -100,7 +101,7 @@ export default async function HolidaySignupsPage({
             include: {
               transactions: true,
               lineItems: { where: { deletedAt: null }, include: { holiday: true } },
-              person: { select: { id: true, fullName: true } },
+              user: { select: { id: true, fullName: true } },
             },
           },
         },
@@ -137,7 +138,7 @@ export default async function HolidaySignupsPage({
   const redirectQs = redirectParams.toString();
   const redirectTo = `/admin/holidays/${holiday.id}/signups${redirectQs ? `?${redirectQs}` : ""}`;
 
-  const { groups, ungrouped } = groupByPerson(signups, (s) => s.bill.person);
+  const { groups, ungrouped } = groupByUser(signups, (s) => s.bill.user);
 
   function TableHead() {
     return (
@@ -204,7 +205,7 @@ export default async function HolidaySignupsPage({
         <td className="px-4 py-3 font-medium text-ink">
           {bill.fullName}
           <div>
-            <PersonBadge person={bill.person} />
+            <UserBadge user={bill.user} />
           </div>
           {bill.notes && (
             <p className="mt-1 text-xs font-normal text-ink/50">{bill.notes}</p>
@@ -273,12 +274,13 @@ export default async function HolidaySignupsPage({
             {bill.status !== "CANCELLED" && (
               <form action={cancelSignupAction}>
                 <input type="hidden" name="billId" value={bill.id} />
-                <button
-                  type="submit"
+                <DoubleConfirmSubmitButton
+                  confirmMessage={`Cancel ${bill.fullName}'s bill? This only updates our own records.`}
+                  typeToConfirm="CANCEL"
                   className="text-xs font-medium text-red-600 hover:underline"
                 >
                   Cancel
-                </button>
+                </DoubleConfirmSubmitButton>
               </form>
             )}
             {bill.status === "CANCELLED" && (
@@ -316,7 +318,7 @@ export default async function HolidaySignupsPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <GroupByPersonToggle />
+          <GroupByUserToggle />
           <a
             href={`/admin/holidays/${holiday.id}/signups/export`}
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -407,11 +409,11 @@ export default async function HolidaySignupsPage({
           <MergeForm redirectTo={redirectTo} />
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ person, items }) => (
-                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ user, items }) => (
+                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
-                      {person.fullName}
+                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
+                      {user.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} signup{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -423,7 +425,7 @@ export default async function HolidaySignupsPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}

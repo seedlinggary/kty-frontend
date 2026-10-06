@@ -87,14 +87,14 @@ the admin signup list (there's a field for the confirmation number).
   becomes a brand-new unrelated record every time - so Search also lets staff
   check the rows that are the same person (across holiday seats, donations,
   memberships, payment links, and form submissions) and "Combine Checked Rows
-  Into One Person." That creates (or reuses) a **Person** - see
-  `/admin/people` - showing their whole combined history in one place.
-  Nothing is ever deleted by this: a "Remove from person" link on the Person
+  Into One User." That creates (or reuses) a **User** - see
+  `/admin/users` - showing their whole combined history in one place.
+  Nothing is ever deleted by this: a "Remove from user" link on the User
   page undoes it per record, and the underlying record itself is untouched
   either way, including right back in NedarimPlus. A form submission has no
   fixed name/email columns (its answers are a dynamic JSON blob), so merging
   one in makes a best-effort guess at a name/email/phone by matching the
-  form's own field labels - good enough to seed a new Person, though in
+  form's own field labels - good enough to seed a new User, though in
   practice a submission is usually merged alongside a donation/membership/
   signup that already has real contact fields.
 - **The same checking-and-combining works right on every list page it
@@ -103,17 +103,17 @@ the admin signup list (there's a field for the confirmation number).
   centrally on Search. A name spelled differently across languages, or a
   different email on a second attempt, can be obvious at a glance on the
   list you're already looking at even when neither value alone would turn up
-  as a text-search match. Each of those pages also has a "Group by person"
+  as a text-search match. Each of those pages also has a "Group by user"
   checkbox, checked by default, that clusters every row already linked to
-  the same Person together (with whatever's still unlinked kept visible
+  the same User together (with whatever's still unlinked kept visible
   underneath, never hidden) - uncheck it to go back to the plain,
   unclustered table.
-- **Possible Duplicates** (on `/admin/people`): staff don't have to spot
+- **Possible Duplicates** (on `/admin/users`): staff don't have to spot
   matches by eye at all - this section scans every donation, membership,
   holiday seat, payment link, other transaction, and form submission for
   ones sharing the same email or phone number (normalized - case/whitespace
   for email, digits-only for phone) that aren't combined onto the same
-  Person yet, and recommends combining them, with one button that runs the
+  User yet, and recommends combining them, with one button that runs the
   same non-destructive combine used everywhere else. It's a recommendation,
   not an automatic change - nothing merges until staff click it, and an
   oddly large match (e.g. a shared office email on many unrelated records)
@@ -163,6 +163,16 @@ the admin signup list (there's a field for the confirmation number).
   reported a decline on the last charge attempt, or from the system's own
   daily check (see Payment Follow-Ups below) noticing an expected charge
   simply never arrived - whichever notices first.
+  Anywhere this import fills in or guesses a value instead of using one
+  NedarimPlus actually reported, a small ⓘ appears next to it (hover for
+  why) - today that's a past charge's amount, when NedarimPlus's own
+  history didn't report one for that specific payment (confirmed to
+  happen - their docs only promise a blank amount for a declined/cancelled
+  charge, not a guarantee for every successful one; this fills in the
+  membership's own recurring rate instead of showing a wrong ₪0), and a
+  membership's Tier, which NedarimPlus has no concept of at all - it's
+  always guessed here by comparing the charge amount to our own Associate/
+  Full price points. Nothing with a real reported value gets a mark.
   NedarimPlus's date fields have turned up in more than one shape in
   practice (plain DD/MM/YYYY, a classic ASP.NET date wrapper, raw epoch
   numbers) - import/re-sync tries each in turn and logs anything it still
@@ -215,6 +225,53 @@ the admin signup list (there's a field for the confirmation number).
   recorded details from an "Edit (Override)" link, and is the only role that
   can create a new Payment Link. A plain `ADMIN` can view everything and send
   follow-up emails, but not freehand-edit a payment record.
+  **Everything on this list is local-only** - every override, cancel,
+  reactivate, and mark-paid action only updates our own database.
+  NedarimPlus's own standing order/charge is completely untouched by any of
+  it, there's no refund/reversal capability anywhere, and cancelling a
+  membership here does **not** stop the real recurring charge - the actual
+  standing order has to be cancelled directly in NedarimPlus (or see Live
+  Actions below). If NedarimPlus charges a membership again after it's
+  marked Cancelled here, the charge is still recorded (the money really
+  moved) but the status is deliberately **not** silently flipped back to
+  Active - a banner on that membership's page flags it instead, since
+  otherwise the mismatch would be invisible.
+  If an override amount differs from NedarimPlus's last confirmed charge,
+  the edit form shows that amount and asks for confirmation before saving -
+  a reminder that this only changes our records, not NedarimPlus's.
+  Every override, cancel, reactivate, mark-paid, and signup correction is
+  logged to an audit trail (who, when, before → after for every changed
+  field) shown as "Change History" on the relevant edit/detail page - a
+  one-way record, never itself editable. Cancelling anything (a donation,
+  membership, bill, or payment link) requires confirming twice, the second
+  time by typing "CANCEL" - a reflexive double-click can't sail through
+  both. None of this is a substitute for reconciling against NedarimPlus's
+  own dashboard directly, especially for anything these overrides touch.
+- **NedarimPlus Live Actions (membership detail page, `SUPERADMIN` only,
+  needs `NEDARIM_APIPASSWORD`) - genuinely still in testing.** Unlike every
+  other action in this app, these make a **real, live change on
+  NedarimPlus's own standing order** - not just our own records:
+  - **Update amount** (`UpdateKevaNew`) - changes the actual monthly charge
+    and/or payments-remaining count on the real standing order, then syncs
+    our own `monthlyAgorot` to match. Shows NedarimPlus's last confirmed
+    charge next to the field first, since our own number can drift from
+    reality if someone used the local-only Edit (Override) before - that
+    discrepancy is shown, not silently papered over, before you commit a
+    real change on top of it.
+  - **Freeze / Disable** (`DisableKeva`) and **Re-enable** (`EnableKevaNew`)
+    - pauses/resumes real charging. Reversible on NedarimPlus's side.
+  - **Delete (Permanent)** (`DeleteKeva`) - permanently deletes the real
+    standing order. Irreversible there.
+  Every one of these requires confirming twice - a dialog, then typing a
+  specific word (DISABLE/ENABLE/DELETE/UPDATE) - and every attempt (success
+  *or failure*) is logged to the same audit trail, visibly tagged **LIVE**
+  so it's never confused with a local-only change. None of these ever
+  delete the Membership row itself: a real delete/disable only sets
+  `nedarimDeletedAt`/`nedarimDisabledAt` timestamps and flips `status`
+  locally to match reality - the record stays, just marked. A permanently
+  deleted standing order can't be re-enabled (on NedarimPlus or here); the
+  whole section hides itself once that's happened, since there's nothing
+  left to safely act on.
 
 ## Notes
 

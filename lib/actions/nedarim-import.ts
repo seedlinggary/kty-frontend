@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 import {
   fetchKevaList,
   fetchKevaDetail,
@@ -11,6 +12,7 @@ import {
 import { shekelsToAgorot } from "@/lib/money";
 import { generateBillId } from "@/lib/billid";
 import { MEMBERSHIP_PRICES_AGOROT } from "@/lib/memberships";
+import { toNumber, parseNedarimDate } from "@/lib/nedarim-parsing";
 import type { MembershipTier, MembershipStatus } from "@/lib/generated/prisma/client";
 
 // Kept small deliberately: each Keva needs its own NedarimPlus API call
@@ -36,21 +38,6 @@ export type ImportNedarimMembersResult =
     }
   | { ok: false; error: string };
 
-/**
- * NedarimPlus's JSON reports don't reliably return numeric fields as JSON
- * numbers - some (confirmed: KevaSuccess/KevaTashlumim) come back as
- * numeric strings instead (e.g. "12"), sometimes with thousands separators
- * (e.g. "1,200"). Every numeric field read from their API goes through this
- * rather than a raw strict-equality/property check or a bare Number(), since
- * `===`/`!==` don't coerce ("1" !== 1), and Number() rejects a comma outright
- * (returning NaN, not the intended value).
- */
-function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(typeof value === "string" ? value.replace(/,/g, "") : value);
-  return isNaN(n) ? null : n;
-}
-
 function inferTier(amountAgorot: number): MembershipTier {
   const associate = MEMBERSHIP_PRICES_AGOROT.ASSOCIATE;
   const full = MEMBERSHIP_PRICES_AGOROT.FULL;
@@ -71,60 +58,6 @@ function inferStatus(keva: KevaListEntry): MembershipStatus {
   if (toNumber(keva.Enabled) === 0) return "CANCELLED";
   if (keva.ErrorText) return "PAST_DUE";
   return "ACTIVE";
-}
-
-/**
- * NedarimPlus's date fields have shown up in more than one shape in
- * practice, so this tries each in turn rather than assuming one:
- *  - the classic ASP.NET AJAX wrapper "/Date(1700000000000)/" (their
- *    reporting backend is ASP.NET-based .aspx, where this is a very common
- *    serialization quirk for anything typed as a .NET DateTime)
- *  - "DD/MM/YYYY" or "DD/MM/YY" (confirmed in practice: GetKevaId's history
- *    dates use a 2-digit year), optionally with a trailing time portion -
- *    checked explicitly rather than left to JS's native parser, since a
- *    bare slash-separated string gets read as US-style MM/DD/YYYY, silently
- *    swapping day and month for any date where the day is 12 or under. A
- *    2-digit year is always read as 20YY - this system has no plausible
- *    transaction from the 1900s.
- *  - a raw epoch number/numeric string
- *  - ISO 8601, as a last resort via the native parser
- * Logs (not throws) when nothing matches, so a real format mismatch shows
- * up in the logs instead of silently becoming "now" or "blank" downstream.
- */
-function parseNedarimDate(raw: unknown): Date | null {
-  if (raw === null || raw === undefined || raw === "") return null;
-
-  if (typeof raw === "string") {
-    const aspNet = raw.match(/\/Date\((-?\d+)(?:[+-]\d{4})?\)\//);
-    if (aspNet) {
-      const d = new Date(Number(aspNet[1]));
-      if (!isNaN(d.getTime())) return d;
-    }
-
-    const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})/);
-    if (slash) {
-      const [, d, mo, yRaw] = slash;
-      const year = yRaw.length === 2 ? 2000 + Number(yRaw) : Number(yRaw);
-      const parsed = new Date(Date.UTC(year, Number(mo) - 1, Number(d)));
-      if (!isNaN(parsed.getTime())) return parsed;
-    }
-
-    if (/^-?\d+$/.test(raw.trim())) {
-      const d = new Date(Number(raw));
-      if (!isNaN(d.getTime())) return d;
-    }
-
-    const iso = new Date(raw);
-    if (!isNaN(iso.getTime())) return iso;
-  }
-
-  if (typeof raw === "number") {
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) return d;
-  }
-
-  console.error("[nedarim-import] Unrecognized date format from NedarimPlus:", raw);
-  return null;
 }
 
 /**
@@ -178,13 +111,18 @@ async function syncMembershipHistory(
     if (toNumber(entry.ID) !== 1 || !entry.TransactionId) continue;
 
     const amount = toNumber(entry.Amount);
-    const amountAgorot = amount != null && amount > 0 ? shekelsToAgorot(amount) : fallbackAmountAgorot;
+    const isEstimated = !(amount != null && amount > 0);
+    const amountAgorot = isEstimated ? fallbackAmountAgorot : shekelsToAgorot(amount!);
     const receivedAt = parseNedarimDate(entry.Date) ?? new Date();
 
     const existing = byTransactionId.get(entry.TransactionId);
     if (existing) {
-      const fixes: { amountAgorot?: number; receivedAt?: Date } = {};
+      const fixes: { amountAgorot?: number; amountIsEstimated?: boolean; receivedAt?: Date } = {};
       if (existing.amountAgorot === 0 && amountAgorot > 0) fixes.amountAgorot = amountAgorot;
+      // Backfills the estimated flag for anything imported before this
+      // flag existed, same re-sync-fixes-everything pattern as the amount
+      // and date corrections just above/below.
+      if (existing.amountIsEstimated !== isEstimated) fixes.amountIsEstimated = isEstimated;
       // Only ever correct a date we imported ourselves, and only when the
       // newly-parsed value is meaningfully different - never touches a
       // webhook-sourced transaction's own recorded time.
@@ -201,16 +139,29 @@ async function syncMembershipHistory(
       continue;
     }
 
-    await prisma.transaction.create({
-      data: {
-        membershipId,
-        nedarimTransactionId: entry.TransactionId,
-        amountAgorot,
-        source: "nedarim-import",
-        receivedAt,
-      },
-    });
-    imported++;
+    try {
+      await prisma.transaction.create({
+        data: {
+          membershipId,
+          nedarimTransactionId: entry.TransactionId,
+          amountAgorot,
+          amountIsEstimated: isEstimated,
+          source: "nedarim-import",
+          receivedAt,
+        },
+      });
+      imported++;
+    } catch (err) {
+      // The upfront byTransactionId lookup only sees rows that existed when
+      // this call started - two overlapping import/re-sync calls for the
+      // same membership (e.g. a double-click on "Continue Import") can both
+      // pass that check for the same TransactionId before either commits.
+      // The unique constraint on nedarimTransactionId is the real backstop;
+      // losing this race just means skip it, the other call already
+      // recorded it (confirmed in production: this exact race had silently
+      // double-inserted several real charges before the constraint existed).
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;
+    }
     if (!latestChargeAt || receivedAt > latestChargeAt) latestChargeAt = receivedAt;
   }
 
@@ -251,6 +202,13 @@ async function importOne(keva: KevaListEntry): Promise<{ created: boolean; payme
     }
   } else {
     const amount = toNumber(keva.Amount);
+    // NedarimPlus's Amount field can be missing/unparseable on a standing
+    // order's own listing (same unreliability already confirmed on its
+    // per-charge HistoryData.Amount - see syncMembershipHistory). There's no
+    // fallback rate to fall back to here (unlike a Transaction, which can
+    // borrow the membership's own monthlyAgorot) - 0 is a placeholder, not a
+    // real rate, so it's flagged rather than shown as if it were confirmed.
+    const monthlyAgorotIsEstimated = amount == null;
     const monthlyAgorot = amount != null ? shekelsToAgorot(amount) : 0;
     membership = await prisma.membership.create({
       data: {
@@ -262,6 +220,7 @@ async function importOne(keva: KevaListEntry): Promise<{ created: boolean; payme
         city: keva.City?.trim() || null,
         tier: inferTier(monthlyAgorot),
         monthlyAgorot,
+        monthlyAgorotIsEstimated,
         kevaId: keva.KevaId,
         status: inferStatus(keva),
         nextChargeDate: parseNedarimDate(keva.NextDate),

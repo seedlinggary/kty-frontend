@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { agorotToShekels } from "@/lib/money";
 import { OverrideMembershipForm } from "@/components/admin/override-membership-form";
+import { AuditHistory } from "@/components/admin/audit-history";
 
 export const metadata: Metadata = { title: "Edit Membership" };
 
@@ -14,6 +15,16 @@ export default async function EditMembershipPage({ params }: { params: Promise<{
   const { id } = await params;
   const membership = await prisma.membership.findUnique({ where: { id } });
   if (!membership) notFound();
+
+  const lastConfirmed = await prisma.transaction.findFirst({
+    where: { membershipId: id },
+    orderBy: { receivedAt: "desc" },
+  });
+  const auditEntries = await prisma.adminAuditLog.findMany({
+    where: { recordType: "membership", recordId: id },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
 
   return (
     <div>
@@ -31,8 +42,10 @@ export default async function EditMembershipPage({ params }: { params: Promise<{
             monthlyShekels: agorotToShekels(membership.monthlyAgorot),
             status: membership.status,
           }}
+          lastConfirmedShekels={lastConfirmed ? agorotToShekels(lastConfirmed.amountAgorot) : null}
         />
       </div>
+      <AuditHistory entries={auditEntries} />
     </div>
   );
 }

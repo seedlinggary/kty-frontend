@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { computeTotalAgorot } from "@/lib/holidays";
+import { diffFields, recordAuditLog } from "@/lib/audit-log";
 
 async function revalidateForBill(billId: string) {
   const lineItems = await prisma.signup.findMany({
@@ -34,19 +35,26 @@ export async function markSignupPaidAction(formData: FormData) {
       },
     }),
   ]);
+  await recordAuditLog({ action: "mark_paid", recordType: "bill", recordId: billId, changes: diffFields(bill, { status: "PAID" }) });
 
   await revalidateForBill(billId);
 }
 
 export async function cancelSignupAction(formData: FormData) {
   const billId = String(formData.get("billId") ?? "");
+  const bill = await prisma.bill.findUnique({ where: { id: billId } });
+  if (!bill) return;
   await prisma.bill.update({ where: { id: billId }, data: { status: "CANCELLED" } });
+  await recordAuditLog({ action: "cancel", recordType: "bill", recordId: billId, changes: diffFields(bill, { status: "CANCELLED" }) });
   await revalidateForBill(billId);
 }
 
 export async function reopenSignupAction(formData: FormData) {
   const billId = String(formData.get("billId") ?? "");
+  const bill = await prisma.bill.findUnique({ where: { id: billId } });
+  if (!bill) return;
   await prisma.bill.update({ where: { id: billId }, data: { status: "PENDING" } });
+  await recordAuditLog({ action: "reopen", recordType: "bill", recordId: billId, changes: diffFields(bill, { status: "PENDING" }) });
   await revalidateForBill(billId);
 }
 
@@ -99,18 +107,17 @@ export async function updateSignup(input: UpdateSignupInput): Promise<UpdateSign
   }));
   const newBillTotal = updatedTotal + otherTotals.reduce((sum, li) => sum + li.totalAgorot, 0);
 
+  const billChanges = {
+    fullName,
+    phone,
+    email: input.email?.trim() || null,
+    isMember: input.isMember,
+    notes: input.notes?.trim() || null,
+    totalAgorot: newBillTotal,
+  };
+
   await prisma.$transaction([
-    prisma.bill.update({
-      where: { id: bill.id },
-      data: {
-        fullName,
-        phone,
-        email: input.email?.trim() || null,
-        isMember: input.isMember,
-        notes: input.notes?.trim() || null,
-        totalAgorot: newBillTotal,
-      },
-    }),
+    prisma.bill.update({ where: { id: bill.id }, data: billChanges }),
     prisma.signup.update({
       where: { id: signup.id },
       data: { menSeats, womenSeats, totalAgorot: updatedTotal },
@@ -119,6 +126,15 @@ export async function updateSignup(input: UpdateSignupInput): Promise<UpdateSign
       prisma.signup.update({ where: { id: li.id }, data: { totalAgorot: li.totalAgorot } })
     ),
   ]);
+  await recordAuditLog({
+    action: "update",
+    recordType: "bill",
+    recordId: bill.id,
+    changes: {
+      ...diffFields(bill, billChanges),
+      ...diffFields({ menSeats: signup.menSeats, womenSeats: signup.womenSeats }, { menSeats, womenSeats }),
+    },
+  });
 
   for (const li of bill.lineItems) {
     revalidatePath(`/admin/holidays/${li.holidayId}/signups`);
@@ -140,6 +156,12 @@ export async function deleteSignupLineItemAction(formData: FormData) {
   const signup = await prisma.signup.update({
     where: { id: signupId },
     data: { deletedAt: new Date() },
+  });
+  await recordAuditLog({
+    action: "delete",
+    recordType: "signup",
+    recordId: signupId,
+    changes: { deletedAt: { before: null, after: signup.deletedAt } },
   });
   revalidatePath(`/admin/holidays/${signup.holidayId}/signups`);
   revalidatePath(`/admin/holidays/${signup.holidayId}`);

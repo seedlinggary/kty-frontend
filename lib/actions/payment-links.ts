@@ -6,6 +6,7 @@ import { buildPaymentLink } from "@/lib/nedarim";
 import { generateBillId } from "@/lib/billid";
 import { shekelsToAgorot } from "@/lib/money";
 import { requireSuperAdmin } from "@/lib/auth-helpers";
+import { diffFields, recordAuditLog } from "@/lib/audit-log";
 
 export type CreatePaymentLinkInput = {
   label: string;
@@ -62,6 +63,9 @@ export async function cancelPaymentLinkAction(formData: FormData) {
   const auth = await requireSuperAdmin();
   if (!auth.ok) return;
   const id = String(formData.get("id") ?? "");
+  const link = await prisma.paymentLink.findUnique({ where: { id } });
+  if (!link) return;
   await prisma.paymentLink.update({ where: { id }, data: { status: "CANCELLED" } });
+  await recordAuditLog({ action: "cancel", recordType: "paymentLink", recordId: id, changes: diffFields(link, { status: "CANCELLED" }) });
   revalidatePath("/admin/payment-links");
 }

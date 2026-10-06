@@ -8,6 +8,7 @@ import { SendFollowUpButton, SendAllFollowUpsButton } from "@/components/admin/f
 import { ImportFailureEmailForm } from "@/components/admin/import-failure-email-form";
 import { SortHeader } from "@/components/admin/sort-header";
 import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
+import { SubmitButton } from "@/components/admin/submit-button";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
 export const metadata: Metadata = { title: "Payment Follow-Ups" };
@@ -115,6 +116,7 @@ export default async function PaymentFollowUpsPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-serif text-2xl font-semibold text-ink">Payment Follow-Ups</h1>
+          <p className="mt-1 text-sm text-ink/60">{withInfo.length} shown</p>
           <p className="mt-1 max-w-2xl text-sm text-ink/60">
             NedarimPlus never tells us directly when a payment is declined - only when one
             succeeds. These are payments that stayed pending past the grace window with no
@@ -223,11 +225,11 @@ export default async function PaymentFollowUpsPage({
                         <SendFollowUpButton followUpId={f.id} />
                         <form action={resolveFollowUpAction}>
                           <input type="hidden" name="id" value={f.id} />
-                          <button type="submit" className="text-xs font-medium text-ink hover:underline">Mark Resolved</button>
+                          <SubmitButton className="text-xs font-medium text-ink hover:underline">Mark Resolved</SubmitButton>
                         </form>
                         <form action={dismissFollowUpAction}>
                           <input type="hidden" name="id" value={f.id} />
-                          <button type="submit" className="text-xs font-medium text-ink/60 hover:underline">Dismiss</button>
+                          <SubmitButton className="text-xs font-medium text-ink/60 hover:underline">Dismiss</SubmitButton>
                         </form>
                       </>
                     )}

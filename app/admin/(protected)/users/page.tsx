@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { mergeIntoPersonAction } from "@/lib/actions/people";
+import { mergeIntoUserAction } from "@/lib/actions/users";
 import { findMergeRecommendations } from "@/lib/merge-recommendations";
 import { SortHeader } from "@/components/admin/sort-header";
 import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 import { formatAdminDate } from "@/lib/admin-dates";
 
-export const metadata: Metadata = { title: "People" };
+export const metadata: Metadata = { title: "Users" };
 
 const SORT_COLUMNS = ["updated", "name", "bills", "donations", "memberships", "paymentLinks", "formResponses", "externalTransactions"] as const;
 type SortKey = (typeof SORT_COLUMNS)[number];
 
-export default async function PeoplePage({
+export default async function UsersPage({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; sort?: string; dir?: string }>;
@@ -24,7 +24,7 @@ export default async function PeoplePage({
 
   const recommendations = await findMergeRecommendations();
 
-  const fetched = await prisma.person.findMany({
+  const fetched = await prisma.user.findMany({
     where: q
       ? {
           OR: [
@@ -49,7 +49,7 @@ export default async function PeoplePage({
   });
 
   const direction = dir === "asc" ? 1 : -1;
-  const people = [...fetched].sort((a, b) => {
+  const users = [...fetched].sort((a, b) => {
     switch (sortKey) {
       case "name":
         return direction * a.fullName.localeCompare(b.fullName);
@@ -72,14 +72,14 @@ export default async function PeoplePage({
   });
 
   function sortHref(column: SortKey) {
-    return buildSortHref("/admin/people", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
+    return buildSortHref("/admin/users", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
   }
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-serif text-2xl font-semibold text-ink">People</h1>
+          <h1 className="font-serif text-2xl font-semibold text-ink">Users</h1>
           <p className="mt-1 max-w-2xl text-sm text-ink/60">
             Combined individuals created by merging records on{" "}
             <Link href="/admin/search" className="text-accent hover:underline">
@@ -109,12 +109,12 @@ export default async function PeoplePage({
                   <p className="text-sm text-ink/70">
                     Same {rec.matchedOn.join(" & ")}:{" "}
                     <span className="font-mono text-xs">{rec.sharedValues.join(", ")}</span>
-                    {rec.existingPersonNames.length > 0 && (
-                      <> · already linked to {rec.existingPersonNames.join(", ")}</>
+                    {rec.existingUserNames.length > 0 && (
+                      <> · already linked to {rec.existingUserNames.join(", ")}</>
                     )}
                   </p>
-                  <form action={mergeIntoPersonAction}>
-                    <input type="hidden" name="redirectTo" value="/admin/people" />
+                  <form action={mergeIntoUserAction}>
+                    <input type="hidden" name="redirectTo" value="/admin/users" />
                     {rec.items.map((item) => (
                       <input key={item.id} type="hidden" name="items" value={`${item.kind}:${item.id}`} />
                     ))}
@@ -130,8 +130,8 @@ export default async function PeoplePage({
                   {rec.items.map((item) => (
                     <li key={item.id}>
                       {item.label}
-                      {item.personName && (
-                        <span className="ml-2 text-xs text-accent">(currently part of {item.personName})</span>
+                      {item.userName && (
+                        <span className="ml-2 text-xs text-accent">(currently part of {item.userName})</span>
                       )}
                     </li>
                   ))}
@@ -190,31 +190,31 @@ export default async function PeoplePage({
             </tr>
           </thead>
           <tbody>
-            {people.map((p) => (
-              <tr key={p.id} className="border-t border-line align-top">
-                <td className="px-4 py-3 font-medium text-ink">{p.fullName}</td>
+            {users.map((u) => (
+              <tr key={u.id} className="border-t border-line align-top">
+                <td className="px-4 py-3 font-medium text-ink">{u.fullName}</td>
                 <td className="px-4 py-3 text-ink/70">
-                  {p.email && <p>{p.email}</p>}
-                  {p.phone && <p className="text-xs text-ink/50">{p.phone}</p>}
+                  {u.email && <p>{u.email}</p>}
+                  {u.phone && <p className="text-xs text-ink/50">{u.phone}</p>}
                 </td>
-                <td className="px-4 py-3 text-ink/70">{p._count.bills}</td>
-                <td className="px-4 py-3 text-ink/70">{p._count.donations}</td>
-                <td className="px-4 py-3 text-ink/70">{p._count.memberships}</td>
-                <td className="px-4 py-3 text-ink/70">{p._count.paymentLinks}</td>
-                <td className="px-4 py-3 text-ink/70">{p._count.formResponses}</td>
-                <td className="px-4 py-3 text-ink/70">{p._count.externalTransactions}</td>
-                <td className="px-4 py-3 whitespace-nowrap text-ink/70">{formatAdminDate(p.updatedAt)}</td>
+                <td className="px-4 py-3 text-ink/70">{u._count.bills}</td>
+                <td className="px-4 py-3 text-ink/70">{u._count.donations}</td>
+                <td className="px-4 py-3 text-ink/70">{u._count.memberships}</td>
+                <td className="px-4 py-3 text-ink/70">{u._count.paymentLinks}</td>
+                <td className="px-4 py-3 text-ink/70">{u._count.formResponses}</td>
+                <td className="px-4 py-3 text-ink/70">{u._count.externalTransactions}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-ink/70">{formatAdminDate(u.updatedAt)}</td>
                 <td className="px-4 py-3">
-                  <Link href={`/admin/people/${p.id}`} className="text-xs font-medium text-ink hover:underline">
+                  <Link href={`/admin/users/${u.id}`} className="text-xs font-medium text-ink hover:underline">
                     View
                   </Link>
                 </td>
               </tr>
             ))}
-            {people.length === 0 && (
+            {users.length === 0 && (
               <tr>
                 <td colSpan={10} className="px-4 py-8 text-center text-ink/50">
-                  No combined people yet - merge some matching records from the{" "}
+                  No combined users yet - merge some matching records from the{" "}
                   <Link href="/admin/search" className="text-accent hover:underline">
                     Search
                   </Link>{" "}

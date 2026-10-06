@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { mergeIntoPersonAction } from "@/lib/actions/people";
+import { mergeIntoUserAction } from "@/lib/actions/users";
 
-const MERGE_FORM_ID = "merge-into-person";
+const MERGE_FORM_ID = "merge-into-user";
 
-export function PersonBadge({ person }: { person: { id: string; fullName: string } | null }) {
-  if (!person) return null;
+export function UserBadge({ user }: { user: { id: string; fullName: string } | null }) {
+  if (!user) return null;
   return (
     <Link
-      href={`/admin/people/${person.id}`}
+      href={`/admin/users/${user.id}`}
       className="mt-1 inline-block rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent hover:underline"
     >
-      Part of: {person.fullName}
+      Part of: {user.fullName}
     </Link>
   );
 }
@@ -44,7 +44,7 @@ export function MergeForm({ redirectTo }: { redirectTo: string }) {
   return (
     <form
       id={MERGE_FORM_ID}
-      action={mergeIntoPersonAction}
+      action={mergeIntoUserAction}
       className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4"
     >
       <input type="hidden" name="redirectTo" value={redirectTo} />
@@ -56,7 +56,7 @@ export function MergeForm({ redirectTo }: { redirectTo: string }) {
         type="submit"
         className="rounded-md border border-line bg-pale px-4 py-2 text-sm font-semibold text-ink hover:bg-pale/70"
       >
-        Combine Checked Rows Into One Person
+        Combine Checked Rows Into One User
       </button>
     </form>
   );
@@ -66,7 +66,7 @@ export function MergeErrorBanner({ show }: { show: boolean }) {
   if (!show) return null;
   return (
     <p className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
-      Check at least two rows before combining them into one person.
+      Check at least two rows before combining them into one user.
     </p>
   );
 }

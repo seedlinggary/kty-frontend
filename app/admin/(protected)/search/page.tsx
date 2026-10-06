@@ -2,8 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { searchEverything } from "@/lib/global-search";
 import { formatAgorotAsILS } from "@/lib/money";
-import { mergeIntoPersonAction } from "@/lib/actions/people";
-import { PersonBadge, MergeErrorBanner } from "@/components/admin/person-merge-ui";
+import { mergeIntoUserAction } from "@/lib/actions/users";
+import { UserBadge, MergeErrorBanner } from "@/components/admin/user-merge-ui";
+import { EstimatedMark } from "@/components/admin/estimated-mark";
+
+const AMOUNT_ESTIMATED_NOTE =
+  "NedarimPlus didn't report an amount for this specific charge, so this is our own fallback - this membership's regular monthly rate - not a figure NedarimPlus actually sent us.";
+const TIER_ESTIMATED_NOTE =
+  'Imported from NedarimPlus, which has no concept of "tier" - we guessed this by comparing the charge amount to our own Associate/Full price points.';
+const RATE_ESTIMATED_NOTE =
+  "NedarimPlus's standing-order listing didn't report a usable amount for this membership when it was imported - this is a placeholder, not a confirmed rate.";
 
 export const metadata: Metadata = { title: "Search" };
 
@@ -68,7 +76,7 @@ export default async function AdminSearchPage({
             {totalResults} result{totalResults === 1 ? "" : "s"} for &quot;{q}&quot;
           </p>
 
-          <form action={mergeIntoPersonAction}>
+          <form action={mergeIntoUserAction}>
             <input type="hidden" name="redirectTo" value={redirectTo} />
             <p className="mt-2 text-xs text-ink/50">
               Check the rows below that are the same real person - even if the name is spelled
@@ -79,7 +87,7 @@ export default async function AdminSearchPage({
               type="submit"
               className="mt-2 rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
             >
-              Combine Checked Rows Into One Person
+              Combine Checked Rows Into One User
             </button>
 
           {results.bills.length > 0 && (
@@ -106,7 +114,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {b.fullName}
-                          <div><PersonBadge person={b.person} /></div>
+                          <div><UserBadge user={b.user} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">
                           <p>{b.phone}</p>
@@ -154,7 +162,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {d.fullName}
-                          <div><PersonBadge person={d.person} /></div>
+                          <div><UserBadge user={d.user} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">
                           <p>{d.email}</p>
@@ -186,10 +194,12 @@ export default async function AdminSearchPage({
                       <div>
                         <p className="font-medium text-ink">{m.fullName}</p>
                         <p className="text-xs text-ink/60">
-                          {m.email} {m.phone && `· ${m.phone}`} · {m.tier === "FULL" ? "Full" : "Associate"} ·{" "}
-                          {formatAgorotAsILS(m.monthlyAgorot)}/mo · {m.status.replace("_", " ")}
+                          {m.email} {m.phone && `· ${m.phone}`} · {m.tier === "FULL" ? "Full" : "Associate"}
+                          {m.createdBy === "nedarim-import" && <EstimatedMark title={TIER_ESTIMATED_NOTE} />} ·{" "}
+                          {formatAgorotAsILS(m.monthlyAgorot)}/mo
+                          {m.monthlyAgorotIsEstimated && <EstimatedMark title={RATE_ESTIMATED_NOTE} />} · {m.status.replace("_", " ")}
                         </p>
-                        <PersonBadge person={m.person} />
+                        <UserBadge user={m.user} />
                       </div>
                     </div>
                     <Link href={`/admin/memberships/${m.id}`} className="text-xs font-medium text-ink hover:underline">
@@ -208,7 +218,10 @@ export default async function AdminSearchPage({
                       {m.transactions.slice(0, 5).map((t) => (
                         <tr key={t.id} className="border-t border-line">
                           <td className="px-4 py-2 text-ink/70">{t.receivedAt.toLocaleDateString()}</td>
-                          <td className="px-4 py-2 text-ink/70">{formatAgorotAsILS(t.amountAgorot)}</td>
+                          <td className="px-4 py-2 text-ink/70">
+                            {formatAgorotAsILS(t.amountAgorot)}
+                            {t.amountIsEstimated && <EstimatedMark title={AMOUNT_ESTIMATED_NOTE} />}
+                          </td>
                           <td className="px-4 py-2 font-mono text-xs text-ink/50">{t.confirmation || "—"}</td>
                         </tr>
                       ))}
@@ -246,7 +259,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {l.label}
-                          <div><PersonBadge person={l.person} /></div>
+                          <div><UserBadge user={l.user} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">
                           {l.fullName && <p>{l.fullName}</p>}
@@ -286,7 +299,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {r.title}
-                          <div><PersonBadge person={r.person} /></div>
+                          <div><UserBadge user={r.user} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">{new Date(r.createdAt).toLocaleString()}</td>
                         <td className="px-4 py-3">
@@ -325,7 +338,7 @@ export default async function AdminSearchPage({
                         <td className="px-4 py-3 text-ink/70">{t.receivedAt.toLocaleDateString()}</td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {t.clientName || "—"}
-                          <div><PersonBadge person={t.person} /></div>
+                          <div><UserBadge user={t.user} /></div>
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(t.amountAgorot)}</td>
                         <td className="px-4 py-3 text-ink/70">{t.groupe || "—"}</td>
@@ -344,7 +357,7 @@ export default async function AdminSearchPage({
             type="submit"
             className="mt-4 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
           >
-            Combine Checked Rows Into One Person
+            Combine Checked Rows Into One User
           </button>
           </form>
 

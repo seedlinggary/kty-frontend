@@ -25,31 +25,31 @@ export async function searchEverything(q: string) {
     await Promise.all([
       prisma.bill.findMany({
         where: { OR: [{ fullName: contains }, { email: contains }, { phone: contains }] },
-        include: { lineItems: { where: { deletedAt: null }, include: { holiday: true } }, person: { select: { id: true, fullName: true } } },
+        include: { lineItems: { where: { deletedAt: null }, include: { holiday: true } }, user: { select: { id: true, fullName: true } } },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
       prisma.donation.findMany({
         where: { OR: [{ fullName: contains }, { email: contains }, { phone: contains }, { address: contains }, { city: contains }] },
-        include: { person: { select: { id: true, fullName: true } } },
+        include: { user: { select: { id: true, fullName: true } } },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
       prisma.membership.findMany({
         where: { OR: [{ fullName: contains }, { email: contains }, { phone: contains }, { address: contains }, { city: contains }] },
-        include: { transactions: { orderBy: { receivedAt: "desc" } }, person: { select: { id: true, fullName: true } } },
+        include: { transactions: { orderBy: { receivedAt: "desc" } }, user: { select: { id: true, fullName: true } } },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
       prisma.paymentLink.findMany({
         where: { OR: [{ fullName: contains }, { email: contains }, { phone: contains }, { label: contains }] },
-        include: { person: { select: { id: true, fullName: true } } },
+        include: { user: { select: { id: true, fullName: true } } },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
       prisma.externalTransaction.findMany({
         where: { OR: [{ clientName: contains }, { email: contains }, { phone: contains }, { comments: contains }, { groupe: contains }] },
-        include: { person: { select: { id: true, fullName: true } } },
+        include: { user: { select: { id: true, fullName: true } } },
         orderBy: { receivedAt: "desc" },
         take: 50,
       }),
@@ -76,15 +76,15 @@ export async function searchEverything(q: string) {
           createdAt: Date;
           title: string;
           slug: string;
-          personId: string | null;
-          personFullName: string | null;
+          userId: string | null;
+          userFullName: string | null;
         }[]
       >`
         SELECT fr.id, fr."formId", fr."createdAt", f.title, f.slug,
-               fr."personId", p."fullName" AS "personFullName"
+               fr."userId", u."fullName" AS "userFullName"
         FROM "FormResponse" fr
         JOIN "Form" f ON f.id = fr."formId"
-        LEFT JOIN "Person" p ON p.id = fr."personId"
+        LEFT JOIN "User" u ON u.id = fr."userId"
         WHERE fr."deletedAt" IS NULL AND fr.answers::text ILIKE ${`%${query}%`}
         ORDER BY fr."createdAt" DESC
         LIMIT 50
@@ -100,7 +100,7 @@ export async function searchEverything(q: string) {
     untrackedFollowUps,
     formResponses: formResponses.map((r) => ({
       ...r,
-      person: r.personId ? { id: r.personId, fullName: r.personFullName ?? "" } : null,
+      user: r.userId ? { id: r.userId, fullName: r.userFullName ?? "" } : null,
     })),
   };
 }

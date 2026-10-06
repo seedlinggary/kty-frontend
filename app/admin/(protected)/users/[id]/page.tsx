@@ -3,14 +3,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
-import { EditPersonForm } from "@/components/admin/edit-person-form";
-import { unlinkFromPersonAction } from "@/lib/actions/people";
+import { EditUserForm } from "@/components/admin/edit-user-form";
+import { unlinkFromUserAction } from "@/lib/actions/users";
+import { AuditHistory } from "@/components/admin/audit-history";
 
-export const metadata: Metadata = { title: "Person" };
+export const metadata: Metadata = { title: "User" };
 
-export default async function PersonDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function UserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const person = await prisma.person.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id },
     include: {
       bills: {
@@ -24,44 +25,50 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
       externalTransactions: { orderBy: { receivedAt: "desc" } },
     },
   });
-  if (!person) notFound();
+  if (!user) notFound();
+
+  const auditEntries = await prisma.adminAuditLog.findMany({
+    where: { recordType: "user", recordId: user.id },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
 
   const totalPaid =
-    person.bills.filter((b) => b.status === "PAID").reduce((s, b) => s + b.totalAgorot, 0) +
-    person.donations.filter((d) => d.status === "PAID").reduce((s, d) => s + d.amountAgorot, 0) +
-    person.memberships.reduce((s, m) => s + m.transactions.reduce((ts, t) => ts + t.amountAgorot, 0), 0) +
-    person.paymentLinks.filter((l) => l.status === "PAID").reduce((s, l) => s + l.amountAgorot, 0) +
-    person.externalTransactions.reduce((s, t) => s + t.amountAgorot, 0);
+    user.bills.filter((b) => b.status === "PAID").reduce((s, b) => s + b.totalAgorot, 0) +
+    user.donations.filter((d) => d.status === "PAID").reduce((s, d) => s + d.amountAgorot, 0) +
+    user.memberships.reduce((s, m) => s + m.transactions.reduce((ts, t) => ts + t.amountAgorot, 0), 0) +
+    user.paymentLinks.filter((l) => l.status === "PAID").reduce((s, l) => s + l.amountAgorot, 0) +
+    user.externalTransactions.reduce((s, t) => s + t.amountAgorot, 0);
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-serif text-2xl font-semibold text-ink">{person.fullName}</h1>
+          <h1 className="font-serif text-2xl font-semibold text-ink">{user.fullName}</h1>
           <p className="mt-1 text-sm text-ink/60">Combined record — total paid {formatAgorotAsILS(totalPaid)}</p>
         </div>
-        <Link href="/admin/people" className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale">
-          Back to People
+        <Link href="/admin/users" className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale">
+          Back to Users
         </Link>
       </div>
 
       <div className="mt-6">
-        <EditPersonForm
-          personId={person.id}
+        <EditUserForm
+          userId={user.id}
           initial={{
-            fullName: person.fullName,
-            email: person.email ?? "",
-            phone: person.phone ?? "",
-            address: person.address ?? "",
-            city: person.city ?? "",
-            notes: person.notes ?? "",
+            fullName: user.fullName,
+            email: user.email ?? "",
+            phone: user.phone ?? "",
+            address: user.address ?? "",
+            city: user.city ?? "",
+            notes: user.notes ?? "",
           }}
         />
       </div>
 
-      {person.bills.length > 0 && (
+      {user.bills.length > 0 && (
         <>
-          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Holiday Seats ({person.bills.length})</h2>
+          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Holiday Seats ({user.bills.length})</h2>
           <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
@@ -74,18 +81,18 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 </tr>
               </thead>
               <tbody>
-                {person.bills.map((b) => (
+                {user.bills.map((b) => (
                   <tr key={b.id} className="border-t border-line align-top">
                     <td className="px-4 py-3 text-ink/70">{b.createdAt.toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-ink/70">{b.lineItems.map((li) => li.holiday.nameEn).join(", ") || "—"}</td>
                     <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(b.totalAgorot)}</td>
                     <td className="px-4 py-3 text-ink/70">{b.status}</td>
                     <td className="px-4 py-3">
-                      <form action={unlinkFromPersonAction}>
+                      <form action={unlinkFromUserAction}>
                         <input type="hidden" name="kind" value="bill" />
                         <input type="hidden" name="id" value={b.id} />
-                        <input type="hidden" name="personId" value={person.id} />
-                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from person</button>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from user</button>
                       </form>
                     </td>
                   </tr>
@@ -96,9 +103,9 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         </>
       )}
 
-      {person.donations.length > 0 && (
+      {user.donations.length > 0 && (
         <>
-          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Donations ({person.donations.length})</h2>
+          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Donations ({user.donations.length})</h2>
           <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
@@ -111,18 +118,18 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 </tr>
               </thead>
               <tbody>
-                {person.donations.map((d) => (
+                {user.donations.map((d) => (
                   <tr key={d.id} className="border-t border-line align-top">
                     <td className="px-4 py-3 text-ink/70">{d.createdAt.toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-ink/70">{d.purpose || "—"}</td>
                     <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(d.amountAgorot)}</td>
                     <td className="px-4 py-3 text-ink/70">{d.status}</td>
                     <td className="px-4 py-3">
-                      <form action={unlinkFromPersonAction}>
+                      <form action={unlinkFromUserAction}>
                         <input type="hidden" name="kind" value="donation" />
                         <input type="hidden" name="id" value={d.id} />
-                        <input type="hidden" name="personId" value={person.id} />
-                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from person</button>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from user</button>
                       </form>
                     </td>
                   </tr>
@@ -133,10 +140,10 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         </>
       )}
 
-      {person.memberships.length > 0 && (
+      {user.memberships.length > 0 && (
         <>
-          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Memberships ({person.memberships.length})</h2>
-          {person.memberships.map((m) => (
+          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Memberships ({user.memberships.length})</h2>
+          {user.memberships.map((m) => (
             <div key={m.id} className="mt-3 overflow-hidden rounded-xl border border-line bg-white">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
                 <p className="text-sm text-ink/70">
@@ -146,10 +153,10 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                   <Link href={`/admin/memberships/${m.id}`} className="text-xs font-medium text-ink hover:underline">
                     Full History →
                   </Link>
-                  <form action={unlinkFromPersonAction}>
+                  <form action={unlinkFromUserAction}>
                     <input type="hidden" name="kind" value="membership" />
                     <input type="hidden" name="id" value={m.id} />
-                    <input type="hidden" name="personId" value={person.id} />
+                    <input type="hidden" name="userId" value={user.id} />
                     <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove</button>
                   </form>
                 </div>
@@ -182,9 +189,9 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         </>
       )}
 
-      {person.paymentLinks.length > 0 && (
+      {user.paymentLinks.length > 0 && (
         <>
-          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Payment Links ({person.paymentLinks.length})</h2>
+          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Payment Links ({user.paymentLinks.length})</h2>
           <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
@@ -196,17 +203,17 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 </tr>
               </thead>
               <tbody>
-                {person.paymentLinks.map((l) => (
+                {user.paymentLinks.map((l) => (
                   <tr key={l.id} className="border-t border-line align-top">
                     <td className="px-4 py-3 text-ink/70">{l.label}</td>
                     <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(l.amountAgorot)}</td>
                     <td className="px-4 py-3 text-ink/70">{l.status}</td>
                     <td className="px-4 py-3">
-                      <form action={unlinkFromPersonAction}>
+                      <form action={unlinkFromUserAction}>
                         <input type="hidden" name="kind" value="paymentLink" />
                         <input type="hidden" name="id" value={l.id} />
-                        <input type="hidden" name="personId" value={person.id} />
-                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from person</button>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from user</button>
                       </form>
                     </td>
                   </tr>
@@ -217,9 +224,9 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         </>
       )}
 
-      {person.formResponses.length > 0 && (
+      {user.formResponses.length > 0 && (
         <>
-          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Form Submissions ({person.formResponses.length})</h2>
+          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Form Submissions ({user.formResponses.length})</h2>
           <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
@@ -231,7 +238,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 </tr>
               </thead>
               <tbody>
-                {person.formResponses.map((r) => (
+                {user.formResponses.map((r) => (
                   <tr key={r.id} className="border-t border-line align-top">
                     <td className="px-4 py-3 font-medium text-ink">{r.form.title}</td>
                     <td className="px-4 py-3 text-ink/70">{r.createdAt.toLocaleDateString()}</td>
@@ -241,11 +248,11 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <form action={unlinkFromPersonAction}>
+                      <form action={unlinkFromUserAction}>
                         <input type="hidden" name="kind" value="formResponse" />
                         <input type="hidden" name="id" value={r.id} />
-                        <input type="hidden" name="personId" value={person.id} />
-                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from person</button>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from user</button>
                       </form>
                     </td>
                   </tr>
@@ -256,9 +263,9 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         </>
       )}
 
-      {person.externalTransactions.length > 0 && (
+      {user.externalTransactions.length > 0 && (
         <>
-          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Other Transactions ({person.externalTransactions.length})</h2>
+          <h2 className="mt-8 font-serif text-lg font-semibold text-ink">Other Transactions ({user.externalTransactions.length})</h2>
           <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-pale text-xs font-semibold uppercase tracking-wide text-ink/60">
@@ -270,17 +277,17 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 </tr>
               </thead>
               <tbody>
-                {person.externalTransactions.map((t) => (
+                {user.externalTransactions.map((t) => (
                   <tr key={t.id} className="border-t border-line align-top">
                     <td className="px-4 py-3 text-ink/70">{t.receivedAt.toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-ink/70">{t.groupe || "—"}</td>
                     <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(t.amountAgorot)}</td>
                     <td className="px-4 py-3">
-                      <form action={unlinkFromPersonAction}>
+                      <form action={unlinkFromUserAction}>
                         <input type="hidden" name="kind" value="externalTransaction" />
                         <input type="hidden" name="id" value={t.id} />
-                        <input type="hidden" name="personId" value={person.id} />
-                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from person</button>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <button type="submit" className="text-xs font-medium text-ink/50 hover:underline">Remove from user</button>
                       </form>
                     </td>
                   </tr>
@@ -291,14 +298,16 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         </>
       )}
 
-      {person.bills.length === 0 &&
-        person.donations.length === 0 &&
-        person.memberships.length === 0 &&
-        person.paymentLinks.length === 0 &&
-        person.formResponses.length === 0 &&
-        person.externalTransactions.length === 0 && (
-          <p className="mt-8 text-ink/50">Nothing linked to this person yet.</p>
+      {user.bills.length === 0 &&
+        user.donations.length === 0 &&
+        user.memberships.length === 0 &&
+        user.paymentLinks.length === 0 &&
+        user.formResponses.length === 0 &&
+        user.externalTransactions.length === 0 && (
+          <p className="mt-8 text-ink/50">Nothing linked to this user yet.</p>
         )}
+
+      <AuditHistory entries={auditEntries} />
     </div>
   );
 }

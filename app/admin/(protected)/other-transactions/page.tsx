@@ -3,16 +3,16 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
 import { formatAdminDateTime } from "@/lib/admin-dates";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, PersonBadge } from "@/components/admin/person-merge-ui";
-import { GroupByPersonToggle } from "@/components/admin/group-by-person-toggle";
-import { groupByPerson } from "@/lib/people-grouping";
+import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
+import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
+import { groupByUser } from "@/lib/user-grouping";
 import { SortHeader } from "@/components/admin/sort-header";
 import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
 export const metadata: Metadata = { title: "Other NedarimPlus Transactions" };
 
-type TransactionRow = Prisma.ExternalTransactionGetPayload<{ include: { person: { select: { id: true; fullName: true } } } }>;
+type TransactionRow = Prisma.ExternalTransactionGetPayload<{ include: { user: { select: { id: true; fullName: true } } } }>;
 
 const SORT_COLUMNS = ["date", "name", "amount", "category"] as const;
 type SortKey = (typeof SORT_COLUMNS)[number];
@@ -40,8 +40,7 @@ export default async function OtherTransactionsPage({
           ],
         }
       : undefined,
-    include: { person: { select: { id: true, fullName: true } } },
-    take: 500,
+    include: { user: { select: { id: true, fullName: true } } },
   });
 
   const total = fetched.reduce((sum, t) => sum + t.amountAgorot, 0);
@@ -66,7 +65,7 @@ export default async function OtherTransactionsPage({
   const redirectQs = redirectParams.toString();
   const redirectTo = `/admin/other-transactions${redirectQs ? `?${redirectQs}` : ""}`;
 
-  const { groups, ungrouped } = groupByPerson(transactions, (t) => t.person);
+  const { groups, ungrouped } = groupByUser(transactions, (t) => t.user);
 
   function sortHref(column: SortKey) {
     return buildSortHref("/admin/other-transactions", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
@@ -107,7 +106,7 @@ export default async function OtherTransactionsPage({
         <td className="px-4 py-3 font-medium text-ink">
           {t.clientName || "—"}
           <div>
-            <PersonBadge person={t.person} />
+            <UserBadge user={t.user} />
           </div>
         </td>
         <td className="px-4 py-3 text-ink/70">
@@ -140,7 +139,15 @@ export default async function OtherTransactionsPage({
             {transactions.length} shown · {formatAgorotAsILS(total)} total
           </p>
         </div>
-        <GroupByPersonToggle />
+        <div className="flex items-center gap-3">
+          <GroupByUserToggle />
+          <a
+            href="/admin/other-transactions/export"
+            className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
+          >
+            Export CSV
+          </a>
+        </div>
       </div>
 
       <form method="get" className="mt-6 flex items-end gap-3">
@@ -179,11 +186,11 @@ export default async function OtherTransactionsPage({
           <MergeForm redirectTo={redirectTo} />
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ person, items }) => (
-                <div key={person.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ user, items }) => (
+                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/people/${person.id}`} className="font-medium text-ink hover:underline">
-                      {person.fullName}
+                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
+                      {user.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} transaction{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -195,7 +202,7 @@ export default async function OtherTransactionsPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a person ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}
