@@ -29,16 +29,17 @@ model Admin {
   createdAt    DateTime  @default(now())
 }
 
-/// A real individual (a congregant/payer - not an admin login, see Admin),
-/// who may have signed up / paid multiple separate times (NedarimPlus itself
-/// never de-duplicates - every signup becomes its own unrelated record
-/// there). Staff explicitly merge Bills/Donations/Memberships/PaymentLinks
-/// onto one User from /admin/search, so the same person's whole history
-/// shows as one combined view instead of scattered unrelated entries.
-/// Nothing is ever required to have a User - records stay fully usable
-/// unlinked, and deleting a User only unlinks its records (never deletes
-/// them - see onDelete: SetNull below).
-model User {
+/// A household (a congregant/payer, and whoever else signs up under the same
+/// family - a husband and wife often each fill out their own form/bill under
+/// their own name/email, and NedarimPlus itself never de-duplicates - every
+/// signup becomes its own unrelated record there). Staff explicitly merge
+/// Bills/Donations/Memberships/PaymentLinks onto one Family from
+/// /admin/search (or the per-row quick-combine picker), so the same
+/// household's whole history shows as one combined view instead of
+/// scattered unrelated entries. Nothing is ever required to have a Family -
+/// records stay fully usable unlinked, and deleting a Family only unlinks
+/// its records (never deletes them - see onDelete: SetNull below).
+model Family {
   id        String   @id @default(cuid())
   fullName  String
   email     String?
@@ -98,11 +99,11 @@ model Bill {
   lineItems     Signup[]
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
-  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId        String?
+  family        Family?           @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  familyId      String?
 
   @@index([status])
-  @@index([userId])
+  @@index([familyId])
 }
 
 /// One line item within a Bill: seats for a single holiday.
@@ -186,11 +187,11 @@ model Donation {
   updatedAt     DateTime          @updatedAt
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
-  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId        String?
+  family        Family?           @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  familyId      String?
 
   @@index([status])
-  @@index([userId])
+  @@index([familyId])
 }
 
 enum MembershipTier {
@@ -258,11 +259,11 @@ model Membership {
   updatedAt                DateTime          @updatedAt
   transactions             Transaction[]
   followUps                PaymentFollowUp[]
-  user                     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId                   String?
+  family                   Family?           @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  familyId                 String?
 
   @@index([status])
-  @@index([userId])
+  @@index([familyId])
 }
 
 /// An admin-generated payment link for a predetermined, fixed amount - e.g. a
@@ -282,11 +283,11 @@ model PaymentLink {
   updatedAt     DateTime          @updatedAt
   transactions  Transaction[]
   followUps     PaymentFollowUp[]
-  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId        String?
+  family        Family?           @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  familyId      String?
 
   @@index([status])
-  @@index([userId])
+  @@index([familyId])
 }
 
 enum FollowUpReason {
@@ -382,11 +383,11 @@ model ExternalTransaction {
   kevaId               String?
   rawPayload           Json?
   receivedAt           DateTime @default(now())
-  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId               String?
+  family               Family?  @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  familyId             String?
 
   @@index([receivedAt])
-  @@index([userId])
+  @@index([familyId])
 }
 
 enum FormFieldType {
@@ -463,12 +464,12 @@ model FormResponse {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId    String?
+  family    Family?   @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  familyId  String?
 
   @@index([formId])
   @@index([deletedAt])
-  @@index([userId])
+  @@index([familyId])
 }
 
 /// Every admin-initiated change to a payment-shaped record (override,

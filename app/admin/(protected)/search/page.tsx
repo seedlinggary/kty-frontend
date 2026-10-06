@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { searchEverything } from "@/lib/global-search";
 import { formatAgorotAsILS } from "@/lib/money";
-import { mergeIntoUserAction } from "@/lib/actions/users";
-import { UserBadge, MergeErrorBanner } from "@/components/admin/user-merge-ui";
+
+import { FamilyBadge, MergeForm } from "@/components/admin/family-merge-ui";
+import { QuickCombinePicker } from "@/components/admin/quick-combine-picker";
 import { EstimatedMark } from "@/components/admin/estimated-mark";
 
 const AMOUNT_ESTIMATED_NOTE =
@@ -26,12 +27,11 @@ function SectionHeading({ children, count }: { children: React.ReactNode; count:
 export default async function AdminSearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; mergeError?: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
   const results = q ? await searchEverything(q) : null;
-  const redirectTo = `/admin/search${q ? `?q=${encodeURIComponent(q)}` : ""}`;
 
   const totalResults = results
     ? results.bills.length +
@@ -68,7 +68,6 @@ export default async function AdminSearchPage({
 
       {!q && <p className="mt-10 text-ink/50">Enter a search above to get started.</p>}
 
-      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
       {q && results && (
         <>
@@ -76,10 +75,9 @@ export default async function AdminSearchPage({
             {totalResults} result{totalResults === 1 ? "" : "s"} for &quot;{q}&quot;
           </p>
 
-          <form action={mergeIntoUserAction}>
-            <input type="hidden" name="redirectTo" value={redirectTo} />
+          <MergeForm>
             <p className="mt-2 text-xs text-ink/50">
-              Check the rows below that are the same real person - even if the name is spelled
+              Check the rows below that are the same household - even if the name is spelled
               differently or a different email was used (across Holiday Seats, Donations,
               Memberships, Payment Links, and Form Submissions) - then combine them into one.
             </p>
@@ -87,7 +85,7 @@ export default async function AdminSearchPage({
               type="submit"
               className="mt-2 rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
             >
-              Combine Checked Rows Into One User
+              Combine Checked Rows Into One Family
             </button>
 
           {results.bills.length > 0 && (
@@ -114,7 +112,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {b.fullName}
-                          <div><UserBadge user={b.user} /></div>
+                          <div><FamilyBadge family={b.family} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">
                           <p>{b.phone}</p>
@@ -124,11 +122,14 @@ export default async function AdminSearchPage({
                         <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(b.totalAgorot)}</td>
                         <td className="px-4 py-3 text-ink/70">{b.status}</td>
                         <td className="px-4 py-3">
-                          {b.lineItems[0] && (
-                            <Link href={`/admin/holidays/${b.lineItems[0].holidayId}/signups`} className="text-xs font-medium text-ink hover:underline">
-                              View
-                            </Link>
-                          )}
+                          <div className="flex flex-col gap-2">
+                            {b.lineItems[0] && (
+                              <Link href={`/admin/holidays/${b.lineItems[0].holidayId}/signups`} className="text-xs font-medium text-ink hover:underline">
+                                View
+                              </Link>
+                            )}
+                            <QuickCombinePicker kind="bill" id={b.id} />
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -152,6 +153,7 @@ export default async function AdminSearchPage({
                       <th className="px-4 py-3">Amount</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Reference</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -162,7 +164,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {d.fullName}
-                          <div><UserBadge user={d.user} /></div>
+                          <div><FamilyBadge family={d.family} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">
                           <p>{d.email}</p>
@@ -172,6 +174,9 @@ export default async function AdminSearchPage({
                         <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(d.amountAgorot)}</td>
                         <td className="px-4 py-3 text-ink/70">{d.status}</td>
                         <td className="px-4 py-3 font-mono text-xs text-ink/60">DON-{d.referenceCode}</td>
+                        <td className="px-4 py-3">
+                          <QuickCombinePicker kind="donation" id={d.id} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -199,12 +204,15 @@ export default async function AdminSearchPage({
                           {formatAgorotAsILS(m.monthlyAgorot)}/mo
                           {m.monthlyAgorotIsEstimated && <EstimatedMark title={RATE_ESTIMATED_NOTE} />} · {m.status.replace("_", " ")}
                         </p>
-                        <UserBadge user={m.user} />
+                        <FamilyBadge family={m.family} />
                       </div>
                     </div>
-                    <Link href={`/admin/memberships/${m.id}`} className="text-xs font-medium text-ink hover:underline">
-                      Full Payment History →
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <Link href={`/admin/memberships/${m.id}`} className="text-xs font-medium text-ink hover:underline">
+                        Full Payment History →
+                      </Link>
+                      <QuickCombinePicker kind="membership" id={m.id} />
+                    </div>
                   </div>
                   <table className="w-full text-left text-sm">
                     <thead className="text-xs font-semibold uppercase tracking-wide text-ink/50">
@@ -249,6 +257,7 @@ export default async function AdminSearchPage({
                       <th className="px-4 py-3">Contact</th>
                       <th className="px-4 py-3">Amount</th>
                       <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -259,7 +268,7 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {l.label}
-                          <div><UserBadge user={l.user} /></div>
+                          <div><FamilyBadge family={l.family} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">
                           {l.fullName && <p>{l.fullName}</p>}
@@ -267,6 +276,9 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(l.amountAgorot)}</td>
                         <td className="px-4 py-3 text-ink/70">{l.status}</td>
+                        <td className="px-4 py-3">
+                          <QuickCombinePicker kind="paymentLink" id={l.id} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -299,13 +311,16 @@ export default async function AdminSearchPage({
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {r.title}
-                          <div><UserBadge user={r.user} /></div>
+                          <div><FamilyBadge family={r.family} /></div>
                         </td>
                         <td className="px-4 py-3 text-ink/70">{new Date(r.createdAt).toLocaleString()}</td>
                         <td className="px-4 py-3">
-                          <Link href={`/admin/forms/${r.formId}/responses/${r.id}/edit`} className="text-xs font-medium text-ink hover:underline">
-                            View / Edit
-                          </Link>
+                          <div className="flex flex-col gap-2">
+                            <Link href={`/admin/forms/${r.formId}/responses/${r.id}/edit`} className="text-xs font-medium text-ink hover:underline">
+                              View / Edit
+                            </Link>
+                            <QuickCombinePicker kind="formResponse" id={r.id} />
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -327,6 +342,7 @@ export default async function AdminSearchPage({
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Amount</th>
                       <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -338,10 +354,13 @@ export default async function AdminSearchPage({
                         <td className="px-4 py-3 text-ink/70">{t.receivedAt.toLocaleDateString()}</td>
                         <td className="px-4 py-3 font-medium text-ink">
                           {t.clientName || "—"}
-                          <div><UserBadge user={t.user} /></div>
+                          <div><FamilyBadge family={t.family} /></div>
                         </td>
                         <td className="px-4 py-3 font-medium text-ink">{formatAgorotAsILS(t.amountAgorot)}</td>
                         <td className="px-4 py-3 text-ink/70">{t.groupe || "—"}</td>
+                        <td className="px-4 py-3">
+                          <QuickCombinePicker kind="externalTransaction" id={t.id} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -357,9 +376,9 @@ export default async function AdminSearchPage({
             type="submit"
             className="mt-4 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
           >
-            Combine Checked Rows Into One User
+            Combine Checked Rows Into One Family
           </button>
-          </form>
+          </MergeForm>
 
           {results.untrackedFollowUps.length > 0 && (
             <>

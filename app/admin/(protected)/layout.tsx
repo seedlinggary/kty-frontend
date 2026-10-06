@@ -2,12 +2,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { logoutAction } from "@/lib/actions/auth";
+import { GlobalMergeToast } from "@/components/admin/global-merge-toast";
 import logoIcon from "@/public/logo-icon.png";
 
 const navLinks = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/search", label: "Search" },
-  { href: "/admin/users", label: "Users" },
+  { href: "/admin/families", label: "Families" },
   { href: "/admin/holidays", label: "Holidays" },
   { href: "/admin/donations", label: "Donations" },
   { href: "/admin/memberships", label: "Memberships" },
@@ -70,6 +71,7 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
         </nav>
         <main className="p-6">{children}</main>
       </div>
+      <GlobalMergeToast />
     </div>
   );
 }

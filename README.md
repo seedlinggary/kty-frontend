@@ -82,42 +82,57 @@ the admin signup list (there's a field for the confirmation number).
   across holiday seats, donations, memberships (with their full payment
   history inline), payment links, other NedarimPlus transactions, untracked
   payment issues, and every congregant form submission, so staff can pull up
-  everything about one person without checking each admin page separately.
-  NedarimPlus never de-duplicates - the same real person signing up again
-  becomes a brand-new unrelated record every time - so Search also lets staff
-  check the rows that are the same person (across holiday seats, donations,
-  memberships, payment links, and form submissions) and "Combine Checked Rows
-  Into One User." That creates (or reuses) a **User** - see
-  `/admin/users` - showing their whole combined history in one place.
-  Nothing is ever deleted by this: a "Remove from user" link on the User
-  page undoes it per record, and the underlying record itself is untouched
-  either way, including right back in NedarimPlus. A form submission has no
-  fixed name/email columns (its answers are a dynamic JSON blob), so merging
-  one in makes a best-effort guess at a name/email/phone by matching the
-  form's own field labels - good enough to seed a new User, though in
-  practice a submission is usually merged alongside a donation/membership/
-  signup that already has real contact fields.
+  everything about one household without checking each admin page
+  separately. NedarimPlus never de-duplicates - the same household signing
+  up again (often a husband and wife each submitting their own form/bill
+  under their own name and email) becomes a brand-new unrelated record every
+  time - so Search also lets staff check the rows that are the same
+  household (across holiday seats, donations, memberships, payment links,
+  and form submissions) and "Combine Checked Rows Into One Family." That
+  creates (or reuses) a **Family** - see `/admin/families` - showing their
+  whole combined history in one place, except holiday seats and membership
+  payment detail, which stay on their own dedicated pages (the family page
+  just shows whether they currently have an active membership). Nothing is
+  ever deleted by this: a "Remove from family" link undoes it per record,
+  and the underlying record itself is untouched either way, including right
+  back in NedarimPlus. Combining never overwrites a family's existing
+  contact info - it only ever fills in a field that was still blank, from
+  whichever merged record has it (including a form submission's own
+  best-effort name/email/phone guess, made by matching the form's own field
+  labels, since a submission has no fixed name/email columns). Combining
+  doesn't navigate anywhere - a dismissible toast (auto-closes after 5s)
+  confirms it and links to the resulting family, so staff stay exactly where
+  they were.
 - **The same checking-and-combining works right on every list page it
   applies to** - Donations, Memberships, Holiday Signups, Payment Links,
   Other NedarimPlus Transactions, and each Form's Responses - not just
   centrally on Search. A name spelled differently across languages, or a
   different email on a second attempt, can be obvious at a glance on the
   list you're already looking at even when neither value alone would turn up
-  as a text-search match. Each of those pages also has a "Group by user"
+  as a text-search match. Each of those pages also has a "Group by family"
   checkbox, checked by default, that clusters every row already linked to
-  the same User together (with whatever's still unlinked kept visible
+  the same Family together (with whatever's still unlinked kept visible
   underneath, never hidden) - uncheck it to go back to the plain,
   unclustered table.
-- **Possible Duplicates** (on `/admin/users`): staff don't have to spot
+- **Combine with...** (next to every row on those same pages, plus Search):
+  for two records that are the same household but live on genuinely
+  different pages - a Donation and a Membership, say - rather than having to
+  plan ahead and check boxes on two different pages, click "Combine with...”
+  on either row, search by name/email/phone right there, and pick the other
+  one. Combines immediately, same toast-confirmation behavior as everywhere
+  else.
+- **Possible Duplicates** (on `/admin/families`): staff don't have to spot
   matches by eye at all - this section scans every donation, membership,
   holiday seat, payment link, other transaction, and form submission for
   ones sharing the same email or phone number (normalized - case/whitespace
   for email, digits-only for phone) that aren't combined onto the same
-  User yet, and recommends combining them, with one button that runs the
-  same non-destructive combine used everywhere else. It's a recommendation,
-  not an automatic change - nothing merges until staff click it, and an
-  oddly large match (e.g. a shared office email on many unrelated records)
-  is left out rather than shown as a wall of false positives.
+  Family yet, and recommends combining them. Each item in a recommendation
+  has its own checkbox, checked by default - uncheck anything that doesn't
+  actually belong (a shared office email, or two household members staff
+  want kept separate for now) before combining the rest. It's a
+  recommendation, not an automatic change - nothing merges until staff click
+  it, and an oddly large match (e.g. a shared office email on many unrelated
+  records) is left out rather than shown as a wall of false positives.
 - **Holidays** (`/admin/holidays`): create a new holiday any time — Sukkos,
   Pesach, next year's Yomim Noraim, etc. Each holiday has its own member/
   non-member seat price and an open/closed toggle. Creating one immediately

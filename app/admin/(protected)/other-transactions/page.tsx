@@ -3,16 +3,17 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatAgorotAsILS } from "@/lib/money";
 import { formatAdminDateTime } from "@/lib/admin-dates";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
-import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
-import { groupByUser } from "@/lib/user-grouping";
+import { MergeForm, MergeCheckbox, FamilyBadge } from "@/components/admin/family-merge-ui";
+import { GroupByFamilyToggle } from "@/components/admin/group-by-family-toggle";
+import { groupByFamily } from "@/lib/family-grouping";
 import { SortHeader } from "@/components/admin/sort-header";
 import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
+import { QuickCombinePicker } from "@/components/admin/quick-combine-picker";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
 export const metadata: Metadata = { title: "Other NedarimPlus Transactions" };
 
-type TransactionRow = Prisma.ExternalTransactionGetPayload<{ include: { user: { select: { id: true; fullName: true } } } }>;
+type TransactionRow = Prisma.ExternalTransactionGetPayload<{ include: { family: { select: { id: true; fullName: true } } } }>;
 
 const SORT_COLUMNS = ["date", "name", "amount", "category"] as const;
 type SortKey = (typeof SORT_COLUMNS)[number];
@@ -20,7 +21,7 @@ type SortKey = (typeof SORT_COLUMNS)[number];
 export default async function OtherTransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ q?: string; view?: string; sort?: string; dir?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
@@ -40,7 +41,7 @@ export default async function OtherTransactionsPage({
           ],
         }
       : undefined,
-    include: { user: { select: { id: true, fullName: true } } },
+    include: { family: { select: { id: true, fullName: true } } },
   });
 
   const total = fetched.reduce((sum, t) => sum + t.amountAgorot, 0);
@@ -60,12 +61,7 @@ export default async function OtherTransactionsPage({
     }
   });
 
-  const redirectParams = new URLSearchParams();
-  if (q) redirectParams.set("q", q);
-  const redirectQs = redirectParams.toString();
-  const redirectTo = `/admin/other-transactions${redirectQs ? `?${redirectQs}` : ""}`;
-
-  const { groups, ungrouped } = groupByUser(transactions, (t) => t.user);
+  const { groups, ungrouped } = groupByFamily(transactions, (t) => t.family);
 
   function sortHref(column: SortKey) {
     return buildSortHref("/admin/other-transactions", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
@@ -91,6 +87,7 @@ export default async function OtherTransactionsPage({
           </th>
           <th className="px-4 py-3">Standing Order</th>
           <th className="px-4 py-3">Confirmation</th>
+          <th className="px-4 py-3" />
         </tr>
       </thead>
     );
@@ -106,7 +103,7 @@ export default async function OtherTransactionsPage({
         <td className="px-4 py-3 font-medium text-ink">
           {t.clientName || "—"}
           <div>
-            <UserBadge user={t.user} />
+            <FamilyBadge family={t.family} />
           </div>
         </td>
         <td className="px-4 py-3 text-ink/70">
@@ -120,6 +117,9 @@ export default async function OtherTransactionsPage({
         </td>
         <td className="px-4 py-3 text-ink/70">{t.kevaId ? "Yes" : "—"}</td>
         <td className="px-4 py-3 font-mono text-xs text-ink/60">{t.confirmation || "—"}</td>
+        <td className="px-4 py-3">
+          <QuickCombinePicker kind="externalTransaction" id={t.id} />
+        </td>
       </tr>
     );
   }
@@ -140,7 +140,7 @@ export default async function OtherTransactionsPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <GroupByUserToggle />
+          <GroupByFamilyToggle />
           <a
             href="/admin/other-transactions/export"
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -165,7 +165,6 @@ export default async function OtherTransactionsPage({
         </button>
       </form>
 
-      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
       {transactions.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
@@ -173,7 +172,7 @@ export default async function OtherTransactionsPage({
             {TableHead()}
             <tbody>
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-ink/50">
+                <td colSpan={9} className="px-4 py-8 text-center text-ink/50">
                   Nothing here yet - every NedarimPlus payment so far has come through one of our
                   own links.
                 </td>
@@ -183,14 +182,22 @@ export default async function OtherTransactionsPage({
         </div>
       ) : (
         <>
-          <MergeForm redirectTo={redirectTo} />
+          <MergeForm id="merge-into-family" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4">
+            <p className="text-xs text-ink/50">
+              Check the rows below that are the same household - even if the name is spelled
+              differently or a different email/phone was used - then combine them into one.
+            </p>
+            <button type="submit" className="rounded-md border border-line bg-pale px-4 py-2 text-sm font-semibold text-ink hover:bg-pale/70">
+              Combine Checked Rows Into One Family
+            </button>
+          </MergeForm>
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ user, items }) => (
-                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ family, items }) => (
+                <div key={family.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
-                      {user.fullName}
+                    <Link href={`/admin/families/${family.id}`} className="font-medium text-ink hover:underline">
+                      {family.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} transaction{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -202,7 +209,7 @@ export default async function OtherTransactionsPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a family ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}

@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateUserAction } from "@/lib/actions/users";
+import { updateFamilyAction } from "@/lib/actions/families";
 
 type Props = {
-  userId: string;
+  familyId: string;
   initial: {
     fullName: string;
     email: string;
@@ -16,7 +16,7 @@ type Props = {
   };
 };
 
-export function EditUserForm({ userId, initial }: Props) {
+export function EditFamilyForm({ familyId, initial }: Props) {
   const router = useRouter();
   const [fullName, setFullName] = useState(initial.fullName);
   const [email, setEmail] = useState(initial.email);
@@ -33,7 +33,7 @@ export function EditUserForm({ userId, initial }: Props) {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const result = await updateUserAction({ id: userId, fullName, email, phone, address, city, notes });
+      const result = await updateFamilyAction({ id: familyId, fullName, email, phone, address, city, notes });
       if (!result.ok) {
         setError(result.error);
         return;

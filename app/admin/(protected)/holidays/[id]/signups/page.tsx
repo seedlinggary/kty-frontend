@@ -14,9 +14,10 @@ import {
   deleteSignupLineItemAction,
 } from "@/lib/actions/signup-admin";
 import type { Prisma, BillStatus } from "@/lib/generated/prisma/client";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
-import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
-import { groupByUser } from "@/lib/user-grouping";
+import { MergeForm, MergeCheckbox, FamilyBadge } from "@/components/admin/family-merge-ui";
+import { QuickCombinePicker } from "@/components/admin/quick-combine-picker";
+import { GroupByFamilyToggle } from "@/components/admin/group-by-family-toggle";
+import { groupByFamily } from "@/lib/family-grouping";
 
 export async function generateMetadata({
   params,
@@ -41,7 +42,6 @@ type SearchParams = {
   sort?: string;
   dir?: string;
   view?: string;
-  mergeError?: string;
 };
 
 const SORT_COLUMNS = [
@@ -101,7 +101,7 @@ export default async function HolidaySignupsPage({
             include: {
               transactions: true,
               lineItems: { where: { deletedAt: null }, include: { holiday: true } },
-              user: { select: { id: true, fullName: true } },
+              family: { select: { id: true, fullName: true } },
             },
           },
         },
@@ -131,14 +131,7 @@ export default async function HolidaySignupsPage({
 
   const isFiltered = Boolean(q) || statusFilter !== "ALL" || memberFilter !== "ALL";
 
-  const redirectParams = new URLSearchParams();
-  if (q) redirectParams.set("q", q);
-  if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
-  if (memberFilter !== "ALL") redirectParams.set("member", memberFilter);
-  const redirectQs = redirectParams.toString();
-  const redirectTo = `/admin/holidays/${holiday.id}/signups${redirectQs ? `?${redirectQs}` : ""}`;
-
-  const { groups, ungrouped } = groupByUser(signups, (s) => s.bill.user);
+  const { groups, ungrouped } = groupByFamily(signups, (s) => s.bill.family);
 
   function TableHead() {
     return (
@@ -205,7 +198,7 @@ export default async function HolidaySignupsPage({
         <td className="px-4 py-3 font-medium text-ink">
           {bill.fullName}
           <div>
-            <UserBadge user={bill.user} />
+            <FamilyBadge family={bill.family} />
           </div>
           {bill.notes && (
             <p className="mt-1 text-xs font-normal text-ink/50">{bill.notes}</p>
@@ -300,6 +293,7 @@ export default async function HolidaySignupsPage({
                 Delete
               </ConfirmSubmitButton>
             </form>
+            <QuickCombinePicker kind="bill" id={bill.id} />
           </div>
         </td>
       </tr>
@@ -318,7 +312,7 @@ export default async function HolidaySignupsPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <GroupByUserToggle />
+          <GroupByFamilyToggle />
           <a
             href={`/admin/holidays/${holiday.id}/signups/export`}
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -389,7 +383,6 @@ export default async function HolidaySignupsPage({
         )}
       </form>
 
-      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
       {signups.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
@@ -406,14 +399,22 @@ export default async function HolidaySignupsPage({
         </div>
       ) : (
         <>
-          <MergeForm redirectTo={redirectTo} />
+          <MergeForm id="merge-into-family" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4">
+            <p className="text-xs text-ink/50">
+              Check the rows below that are the same household - even if the name is spelled
+              differently or a different email/phone was used - then combine them into one.
+            </p>
+            <button type="submit" className="rounded-md border border-line bg-pale px-4 py-2 text-sm font-semibold text-ink hover:bg-pale/70">
+              Combine Checked Rows Into One Family
+            </button>
+          </MergeForm>
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ user, items }) => (
-                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ family, items }) => (
+                <div key={family.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
-                      {user.fullName}
+                    <Link href={`/admin/families/${family.id}`} className="font-medium text-ink hover:underline">
+                      {family.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} signup{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -425,7 +426,7 @@ export default async function HolidaySignupsPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a family ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}

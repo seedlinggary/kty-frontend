@@ -7,7 +7,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
  * flat, ungrouped table instead. Reads/writes the URL directly so it works
  * as a plain toggle without needing a separate "Apply" click.
  */
-export function GroupByUserToggle() {
+export function GroupByFamilyToggle() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -32,7 +32,7 @@ export function GroupByUserToggle() {
         onChange={(e) => onChange(e.target.checked)}
         className="h-4 w-4 rounded border-line"
       />
-      Group by user
+      Group by family
     </label>
   );
 }

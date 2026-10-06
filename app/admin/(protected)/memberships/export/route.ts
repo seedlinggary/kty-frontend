@@ -16,14 +16,14 @@ const COLUMNS: CsvColumn[] = [
   { key: "status", label: "Status" },
   { key: "nextChargeDate", label: "Next Charge" },
   { key: "lastChargeAt", label: "Last Charge" },
-  { key: "user", label: "Linked User" },
+  { key: "family", label: "Linked Family" },
   { key: "createdBy", label: "Created By" },
   { key: "createdAt", label: "Signed Up" },
 ];
 
 export async function GET() {
   const memberships = await prisma.membership.findMany({
-    include: { user: { select: { fullName: true } } },
+    include: { family: { select: { fullName: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -40,7 +40,7 @@ export async function GET() {
     status: m.status,
     nextChargeDate: m.nextChargeDate?.toISOString() ?? "",
     lastChargeAt: m.lastChargeAt?.toISOString() ?? "",
-    user: m.user?.fullName ?? "",
+    family: m.family?.fullName ?? "",
     createdBy: m.createdBy,
     createdAt: m.createdAt.toISOString(),
   }));

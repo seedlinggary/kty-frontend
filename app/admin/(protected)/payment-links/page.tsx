@@ -9,12 +9,13 @@ import { markPaymentLinkPaidAction } from "@/lib/actions/payment-admin";
 import { cancelPaymentLinkAction } from "@/lib/actions/payment-links";
 import { flagForFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import { CopyLinkButton } from "@/components/admin/copy-link-button";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
-import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
-import { groupByUser } from "@/lib/user-grouping";
+import { MergeForm, MergeCheckbox, FamilyBadge } from "@/components/admin/family-merge-ui";
+import { GroupByFamilyToggle } from "@/components/admin/group-by-family-toggle";
+import { groupByFamily } from "@/lib/family-grouping";
 import type { BillStatus, Prisma } from "@/lib/generated/prisma/client";
 import { DoubleConfirmSubmitButton } from "@/components/admin/double-confirm-submit-button";
 import { SubmitButton } from "@/components/admin/submit-button";
+import { QuickCombinePicker } from "@/components/admin/quick-combine-picker";
 import { SortHeader } from "@/components/admin/sort-header";
 import { buildSortHref, nextSortDir, type SortDir } from "@/lib/sort-params";
 
@@ -26,7 +27,7 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-500",
 };
 
-type PaymentLinkRow = Prisma.PaymentLinkGetPayload<{ include: { user: { select: { id: true; fullName: true } } } }>;
+type PaymentLinkRow = Prisma.PaymentLinkGetPayload<{ include: { family: { select: { id: true; fullName: true } } } }>;
 
 const SORT_COLUMNS = ["date", "label", "amount", "status"] as const;
 type SortKey = (typeof SORT_COLUMNS)[number];
@@ -34,7 +35,7 @@ type SortKey = (typeof SORT_COLUMNS)[number];
 export default async function PaymentLinksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string; sort?: string; dir?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
@@ -58,7 +59,7 @@ export default async function PaymentLinksPage({
 
   const fetched = await prisma.paymentLink.findMany({
     where,
-    include: { user: { select: { id: true, fullName: true } } },
+    include: { family: { select: { id: true, fullName: true } } },
   });
 
   const direction = dir === "asc" ? 1 : -1;
@@ -76,13 +77,7 @@ export default async function PaymentLinksPage({
     }
   });
 
-  const redirectParams = new URLSearchParams();
-  if (q) redirectParams.set("q", q);
-  if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
-  const redirectQs = redirectParams.toString();
-  const redirectTo = `/admin/payment-links${redirectQs ? `?${redirectQs}` : ""}`;
-
-  const { groups, ungrouped } = groupByUser(links, (l) => l.user);
+  const { groups, ungrouped } = groupByFamily(links, (l) => l.family);
 
   function sortHref(column: SortKey) {
     return buildSortHref("/admin/payment-links", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
@@ -132,7 +127,7 @@ export default async function PaymentLinksPage({
         <td className="px-4 py-3 font-medium text-ink">
           {link.label}
           <div>
-            <UserBadge user={link.user} />
+            <FamilyBadge family={link.family} />
           </div>
         </td>
         <td className="px-4 py-3 text-ink/70">
@@ -179,6 +174,7 @@ export default async function PaymentLinksPage({
                 Edit (Override)
               </Link>
             )}
+            <QuickCombinePicker kind="paymentLink" id={link.id} />
           </div>
         </td>
       </tr>
@@ -197,7 +193,7 @@ export default async function PaymentLinksPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <GroupByUserToggle />
+          <GroupByFamilyToggle />
           <a
             href="/admin/payment-links/export"
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -245,7 +241,6 @@ export default async function PaymentLinksPage({
         </button>
       </form>
 
-      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
       {links.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
@@ -260,14 +255,22 @@ export default async function PaymentLinksPage({
         </div>
       ) : (
         <>
-          <MergeForm redirectTo={redirectTo} />
+          <MergeForm id="merge-into-family" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4">
+            <p className="text-xs text-ink/50">
+              Check the rows below that are the same household - even if the name is spelled
+              differently or a different email/phone was used - then combine them into one.
+            </p>
+            <button type="submit" className="rounded-md border border-line bg-pale px-4 py-2 text-sm font-semibold text-ink hover:bg-pale/70">
+              Combine Checked Rows Into One Family
+            </button>
+          </MergeForm>
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ user, items }) => (
-                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ family, items }) => (
+                <div key={family.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
-                      {user.fullName}
+                    <Link href={`/admin/families/${family.id}`} className="font-medium text-ink hover:underline">
+                      {family.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} link{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -279,7 +282,7 @@ export default async function PaymentLinksPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a family ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       <TableHead />

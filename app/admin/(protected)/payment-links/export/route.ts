@@ -11,14 +11,14 @@ const COLUMNS: CsvColumn[] = [
   { key: "phone", label: "Phone" },
   { key: "amountILS", label: "Amount (ILS)" },
   { key: "status", label: "Status" },
-  { key: "user", label: "Linked User" },
+  { key: "family", label: "Linked Family" },
   { key: "createdBy", label: "Created By" },
   { key: "createdAt", label: "Created" },
 ];
 
 export async function GET() {
   const links = await prisma.paymentLink.findMany({
-    include: { user: { select: { fullName: true } } },
+    include: { family: { select: { fullName: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -30,7 +30,7 @@ export async function GET() {
     phone: l.phone ?? "",
     amountILS: agorotToShekels(l.amountAgorot),
     status: l.status,
-    user: l.user?.fullName ?? "",
+    family: l.family?.fullName ?? "",
     createdBy: l.createdBy,
     createdAt: l.createdAt.toISOString(),
   }));

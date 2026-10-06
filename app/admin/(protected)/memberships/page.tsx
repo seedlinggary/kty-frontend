@@ -6,9 +6,9 @@ import { formatAgorotAsILS } from "@/lib/money";
 import { cancelMembershipAction, reactivateMembershipAction } from "@/lib/actions/payment-admin";
 import { flagForFollowUpAction } from "@/lib/actions/payment-follow-ups";
 import type { MembershipStatus, Prisma } from "@/lib/generated/prisma/client";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
-import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
-import { groupByUser } from "@/lib/user-grouping";
+import { MergeForm, MergeCheckbox, FamilyBadge } from "@/components/admin/family-merge-ui";
+import { GroupByFamilyToggle } from "@/components/admin/group-by-family-toggle";
+import { groupByFamily } from "@/lib/family-grouping";
 import { ImportNedarimMembersButton } from "@/components/admin/import-nedarim-members-button";
 import { isNedarimReportingConfigured } from "@/lib/nedarim-reports";
 import { formatAdminDate } from "@/lib/admin-dates";
@@ -18,6 +18,7 @@ import { DoubleConfirmSubmitButton } from "@/components/admin/double-confirm-sub
 import { EstimatedMark } from "@/components/admin/estimated-mark";
 import { SubmitButton } from "@/components/admin/submit-button";
 import { parseDateRangeFilter } from "@/lib/date-range";
+import { QuickCombinePicker } from "@/components/admin/quick-combine-picker";
 
 const TIER_ESTIMATED_NOTE =
   'Imported from NedarimPlus, which has no concept of "tier" - we guessed this by comparing the charge amount to our own Associate/Full price points.';
@@ -33,7 +34,7 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-500",
 };
 
-type MembershipRow = Prisma.MembershipGetPayload<{ include: { user: { select: { id: true; fullName: true } } } }>;
+type MembershipRow = Prisma.MembershipGetPayload<{ include: { family: { select: { id: true; fullName: true } } } }>;
 
 const SORT_COLUMNS = ["since", "name", "tier", "monthly", "next", "status"] as const;
 type SortKey = (typeof SORT_COLUMNS)[number];
@@ -41,7 +42,7 @@ type SortKey = (typeof SORT_COLUMNS)[number];
 export default async function MembershipsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; from?: string; to?: string; view?: string; mergeError?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; from?: string; to?: string; view?: string; sort?: string; dir?: string }>;
 }) {
   const session = await auth();
   const isSuperAdmin = session?.user?.role === "SUPERADMIN";
@@ -70,9 +71,11 @@ export default async function MembershipsPage({
 
   const fetched = await prisma.membership.findMany({
     where,
-    include: { user: { select: { id: true, fullName: true } } },
+    include: { family: { select: { id: true, fullName: true } } },
   });
   const activeCount = fetched.filter((m) => m.status === "ACTIVE").length;
+  const fullCount = fetched.filter((m) => m.status === "ACTIVE" && m.tier === "FULL").length;
+  const associateCount = fetched.filter((m) => m.status === "ACTIVE" && m.tier === "ASSOCIATE").length;
   const activeMemberships = fetched.filter((m) => m.status === "ACTIVE");
   const monthlyTotal = activeMemberships
     .filter((m) => !m.monthlyAgorotIsEstimated)
@@ -98,15 +101,7 @@ export default async function MembershipsPage({
     }
   });
 
-  const redirectParams = new URLSearchParams();
-  if (q) redirectParams.set("q", q);
-  if (statusFilter !== "ALL") redirectParams.set("status", statusFilter);
-  if (from) redirectParams.set("from", from);
-  if (to) redirectParams.set("to", to);
-  const redirectQs = redirectParams.toString();
-  const redirectTo = `/admin/memberships${redirectQs ? `?${redirectQs}` : ""}`;
-
-  const { groups, ungrouped } = groupByUser(memberships, (m) => m.user);
+  const { groups, ungrouped } = groupByFamily(memberships, (m) => m.family);
 
   function sortHref(column: SortKey) {
     return buildSortHref("/admin/memberships", sp, { sort: column, dir: nextSortDir(sortKey, dir, column) });
@@ -153,7 +148,7 @@ export default async function MembershipsPage({
         <td className="px-4 py-3 font-medium text-ink">
           {m.fullName}
           <div>
-            <UserBadge user={m.user} />
+            <FamilyBadge family={m.family} />
           </div>
         </td>
         <td className="px-4 py-3 text-ink/70">
@@ -211,6 +206,7 @@ export default async function MembershipsPage({
                 Edit (Override)
               </Link>
             )}
+            <QuickCombinePicker kind="membership" id={m.id} />
           </div>
         </td>
       </tr>
@@ -223,12 +219,12 @@ export default async function MembershipsPage({
         <div>
           <h1 className="font-serif text-2xl font-semibold text-ink">Memberships</h1>
           <p className="text-sm text-ink/60">
-            {activeCount} active · {formatAgorotAsILS(monthlyTotal)}/month expected
+            {activeCount} active ({fullCount} Full, {associateCount} Associate) · {formatAgorotAsILS(monthlyTotal)}/month expected
             {estimatedRateCount > 0 && ` (excludes ${estimatedRateCount} with an unconfirmed rate)`}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <GroupByUserToggle />
+          <GroupByFamilyToggle />
           <a
             href="/admin/memberships/export"
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -284,7 +280,6 @@ export default async function MembershipsPage({
         </button>
       </form>
 
-      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
       {memberships.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
@@ -299,14 +294,22 @@ export default async function MembershipsPage({
         </div>
       ) : (
         <>
-          <MergeForm redirectTo={redirectTo} />
+          <MergeForm id="merge-into-family" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4">
+            <p className="text-xs text-ink/50">
+              Check the rows below that are the same household - even if the name is spelled
+              differently or a different email/phone was used - then combine them into one.
+            </p>
+            <button type="submit" className="rounded-md border border-line bg-pale px-4 py-2 text-sm font-semibold text-ink hover:bg-pale/70">
+              Combine Checked Rows Into One Family
+            </button>
+          </MergeForm>
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ user, items }) => (
-                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ family, items }) => (
+                <div key={family.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
-                      {user.fullName}
+                    <Link href={`/admin/families/${family.id}`} className="font-medium text-ink hover:underline">
+                      {family.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} membership{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -318,7 +321,7 @@ export default async function MembershipsPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a family ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}

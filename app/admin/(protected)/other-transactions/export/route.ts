@@ -12,13 +12,13 @@ const COLUMNS: CsvColumn[] = [
   { key: "confirmation", label: "Confirmation #" },
   { key: "kevaId", label: "Keva ID" },
   { key: "comments", label: "Comments" },
-  { key: "user", label: "Linked User" },
+  { key: "family", label: "Linked Family" },
   { key: "receivedAt", label: "Received" },
 ];
 
 export async function GET() {
   const transactions = await prisma.externalTransaction.findMany({
-    include: { user: { select: { fullName: true } } },
+    include: { family: { select: { fullName: true } } },
     orderBy: { receivedAt: "desc" },
   });
 
@@ -31,7 +31,7 @@ export async function GET() {
     confirmation: t.confirmation ?? "",
     kevaId: t.kevaId ?? "",
     comments: t.comments ?? "",
-    user: t.user?.fullName ?? "",
+    family: t.family?.fullName ?? "",
     receivedAt: t.receivedAt.toISOString(),
   }));
 

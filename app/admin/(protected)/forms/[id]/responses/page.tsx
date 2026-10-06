@@ -6,9 +6,10 @@ import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
 import { SortHeader } from "@/components/admin/sort-header";
 import { deleteFormResponseAction } from "@/lib/actions/form-responses";
 import { formatAnswerForDisplay, answerMatchesSearch, getFieldOptions, isChoiceType } from "@/lib/forms";
-import { MergeForm, MergeCheckbox, MergeErrorBanner, UserBadge } from "@/components/admin/user-merge-ui";
-import { GroupByUserToggle } from "@/components/admin/group-by-user-toggle";
-import { groupByUser } from "@/lib/user-grouping";
+import { MergeForm, MergeCheckbox, FamilyBadge } from "@/components/admin/family-merge-ui";
+import { GroupByFamilyToggle } from "@/components/admin/group-by-family-toggle";
+import { groupByFamily } from "@/lib/family-grouping";
+import { QuickCombinePicker } from "@/components/admin/quick-combine-picker";
 
 export async function generateMetadata({
   params,
@@ -53,7 +54,7 @@ export default async function FormResponsesPage({
       responses: {
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
-        include: { user: { select: { id: true, fullName: true } } },
+        include: { family: { select: { id: true, fullName: true } } },
       },
     },
   });
@@ -101,14 +102,7 @@ export default async function FormResponsesPage({
 
   const isFiltered = Boolean(q) || activeFilters.length > 0;
 
-  const redirectParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(sp)) {
-    if (value && key !== "view" && key !== "mergeError") redirectParams.set(key, value);
-  }
-  const redirectQs = redirectParams.toString();
-  const redirectTo = `/admin/forms/${form.id}/responses${redirectQs ? `?${redirectQs}` : ""}`;
-
-  const { groups, ungrouped } = groupByUser(sorted, (r) => r.user);
+  const { groups, ungrouped } = groupByFamily(sorted, (r) => r.family);
 
   function TableHead() {
     return (
@@ -153,7 +147,7 @@ export default async function FormResponsesPage({
         </td>
         <td className="whitespace-nowrap px-4 py-3 text-xs text-ink/60">
           {response.createdAt.toLocaleDateString()}
-          <div><UserBadge user={response.user} /></div>
+          <div><FamilyBadge family={response.family} /></div>
         </td>
         {form!.fields.map((field) => (
           <td key={field.id} className="max-w-[16rem] px-4 py-3 text-ink/80">
@@ -179,6 +173,7 @@ export default async function FormResponsesPage({
                 Delete
               </ConfirmSubmitButton>
             </form>
+            <QuickCombinePicker kind="formResponse" id={response.id} />
           </div>
         </td>
       </tr>
@@ -197,7 +192,7 @@ export default async function FormResponsesPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <GroupByUserToggle />
+          <GroupByFamilyToggle />
           <a
             href={`/admin/forms/${form.id}/responses/export`}
             className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-pale"
@@ -264,7 +259,6 @@ export default async function FormResponsesPage({
         )}
       </form>
 
-      <MergeErrorBanner show={sp.mergeError === "select-at-least-two"} />
 
       {sorted.length === 0 ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-white">
@@ -281,14 +275,22 @@ export default async function FormResponsesPage({
         </div>
       ) : (
         <>
-          <MergeForm redirectTo={redirectTo} />
+          <MergeForm id="merge-into-family" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4">
+            <p className="text-xs text-ink/50">
+              Check the rows below that are the same household - even if the name is spelled
+              differently or a different email/phone was used - then combine them into one.
+            </p>
+            <button type="submit" className="rounded-md border border-line bg-pale px-4 py-2 text-sm font-semibold text-ink hover:bg-pale/70">
+              Combine Checked Rows Into One Family
+            </button>
+          </MergeForm>
           {grouped ? (
             <div className="mt-4 space-y-6">
-              {groups.map(({ user, items }) => (
-                <div key={user.id} className="overflow-hidden rounded-xl border border-line bg-white">
+              {groups.map(({ family, items }) => (
+                <div key={family.id} className="overflow-hidden rounded-xl border border-line bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-pale px-4 py-3">
-                    <Link href={`/admin/users/${user.id}`} className="font-medium text-ink hover:underline">
-                      {user.fullName}
+                    <Link href={`/admin/families/${family.id}`} className="font-medium text-ink hover:underline">
+                      {family.fullName}
                     </Link>
                     <span className="text-xs text-ink/60">{items.length} response{items.length === 1 ? "" : "s"}</span>
                   </div>
@@ -300,7 +302,7 @@ export default async function FormResponsesPage({
               ))}
               {ungrouped.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a user ({ungrouped.length})</h2>
+                  <h2 className="text-sm font-semibold text-ink/60">Not linked to a family ({ungrouped.length})</h2>
                   <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-white">
                     <table className="w-full text-left text-sm">
                       {TableHead()}
